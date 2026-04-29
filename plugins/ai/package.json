@@ -9,9 +9,9 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@ai-plugins-cc/core": "workspace:^",
-    "@ai-plugins-cc/codex-adapter": "workspace:^",
-    "@ai-plugins-cc/shared-prompts": "workspace:^"
+    "@ai-plugins-cc/core": "*",
+    "@ai-plugins-cc/codex-adapter": "*",
+    "@ai-plugins-cc/shared-prompts": "*"
   },
   "scripts": {
     "test": "node --test tests/*.test.mjs"

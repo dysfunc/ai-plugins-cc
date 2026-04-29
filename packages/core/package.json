@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": false,
   "type": "module",
-  "description": "Shared core library for ai-plugins-cc: state, process, git, context, render, job-control, hooks, provider contract.",
+  "description": "Shared core library for ai-plugins-cc: state, process, git, context, render, job-control, tracked-jobs, workspace, fs, args, prompts. Phase 1a is a verbatim lift from gemini-plugin-cc; Phase 1b will de-brand and harden.",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=20.0.0"
@@ -11,18 +11,18 @@
   "main": "./src/index.mjs",
   "exports": {
     ".": "./src/index.mjs",
-    "./state": "./src/state.mjs",
-    "./process": "./src/process.mjs",
-    "./git": "./src/git.mjs",
-    "./context": "./src/context.mjs",
-    "./render": "./src/render.mjs",
-    "./job-control": "./src/job-control.mjs",
-    "./tracked-jobs": "./src/tracked-jobs.mjs",
-    "./workspace": "./src/workspace.mjs",
-    "./fs": "./src/fs.mjs",
     "./args": "./src/args.mjs",
-    "./hooks": "./src/hooks.mjs",
-    "./provider": "./src/provider.mjs"
+    "./context": "./src/context.mjs",
+    "./fs": "./src/fs.mjs",
+    "./gemini": "./src/gemini.mjs",
+    "./git": "./src/git.mjs",
+    "./job-control": "./src/job-control.mjs",
+    "./process": "./src/process.mjs",
+    "./prompts": "./src/prompts.mjs",
+    "./render": "./src/render.mjs",
+    "./state": "./src/state.mjs",
+    "./tracked-jobs": "./src/tracked-jobs.mjs",
+    "./workspace": "./src/workspace.mjs"
   },
   "scripts": {
     "test": "node --test tests/*.test.mjs"
