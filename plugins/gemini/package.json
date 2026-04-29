@@ -8,6 +8,9 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "exports": {
+    "./meta": "./scripts/meta.mjs"
+  },
   "dependencies": {
     "@ai-plugins-cc/core": "*",
     "@ai-plugins-cc/shared-prompts": "*"

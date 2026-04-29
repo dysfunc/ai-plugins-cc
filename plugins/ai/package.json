@@ -11,7 +11,11 @@
   "dependencies": {
     "@ai-plugins-cc/core": "*",
     "@ai-plugins-cc/codex-adapter": "*",
+    "@ai-plugins-cc/gemini": "*",
+    "@ai-plugins-cc/grok": "*",
     "@ai-plugins-cc/shared-prompts": "*"
   },
-  "scripts": {}
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  }
 }
