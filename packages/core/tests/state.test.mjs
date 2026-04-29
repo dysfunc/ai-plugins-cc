@@ -1,11 +1,23 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 
 import { makeTempDir } from "./helpers.mjs";
-import { resolveJobFile, resolveJobLogFile, resolveStateDir, resolveStateFile, saveState } from "@ai-plugins-cc/core/state";
+import {
+  listJobs,
+  resolveJobFile,
+  resolveJobLogFile,
+  resolveStateDir,
+  resolveStateFile,
+  saveState
+} from "@ai-plugins-cc/core/state";
+
+const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+const WRITER_SCRIPT = path.join(TESTS_DIR, "concurrent-state-writer.mjs");
 
 function writeTranscript(filePath, body) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -159,4 +171,51 @@ test("saveState removes transcript files for pruned jobs", () => {
 
   assert.equal(fs.existsSync(transcriptA), false, "pruned job's transcript must be deleted");
   assert.equal(fs.existsSync(transcriptB), true, "retained job's transcript must remain");
+});
+
+test("concurrent upsertJob writes do not lose updates", async () => {
+  const workspace = makeTempDir();
+  const pluginDataDir = makeTempDir();
+  const previousPluginDataDir = process.env.CLAUDE_PLUGIN_DATA;
+  process.env.CLAUDE_PLUGIN_DATA = pluginDataDir;
+  try {
+    const concurrency = 8;
+    const ids = Array.from({ length: concurrency }, (_, i) => `concurrent-${i}`);
+
+    const env = { ...process.env, CLAUDE_PLUGIN_DATA: pluginDataDir };
+    const runs = ids.map(
+      (id) =>
+        new Promise((resolve, reject) => {
+          const child = spawn(
+            process.execPath,
+            [WRITER_SCRIPT, workspace, id],
+            { env, stdio: ["ignore", "pipe", "pipe"] }
+          );
+          let stderr = "";
+          child.stderr.on("data", (chunk) => {
+            stderr += chunk;
+          });
+          child.on("error", reject);
+          child.on("exit", (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`writer ${id} exited ${code}: ${stderr}`));
+          });
+        })
+    );
+
+    await Promise.all(runs);
+
+    const jobs = listJobs(workspace);
+    const recordedIds = new Set(jobs.map((job) => job.id));
+    for (const id of ids) {
+      assert.equal(recordedIds.has(id), true, `expected job ${id} to survive concurrent writes`);
+    }
+    assert.equal(jobs.length, concurrency, "every concurrent upsert must be recorded");
+  } finally {
+    if (previousPluginDataDir === undefined) {
+      delete process.env.CLAUDE_PLUGIN_DATA;
+    } else {
+      process.env.CLAUDE_PLUGIN_DATA = previousPluginDataDir;
+    }
+  }
 });
