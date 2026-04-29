@@ -12,6 +12,7 @@
   "exports": {
     ".": "./src/index.mjs",
     "./args": "./src/args.mjs",
+    "./config": "./src/config.mjs",
     "./context": "./src/context.mjs",
     "./fs": "./src/fs.mjs",
     "./git": "./src/git.mjs",

@@ -137,7 +137,7 @@ test("collectReviewContext falls back to lightweight context for larger adversar
   assert.equal(context.inputMode, "self-collect");
   assert.equal(context.fileCount, 3);
   assert.match(context.collectionGuidance, /full diff exceeded the inline cap/i);
-  assert.match(context.collectionGuidance, /Gemini CLI runs headless/i);
+  assert.match(context.collectionGuidance, /underlying CLI runs headless/i);
   assert.doesNotMatch(context.content, /SELF_COLLECT_MARKER_[ABC]/);
   assert.match(context.content, /## Changed Files/);
 });

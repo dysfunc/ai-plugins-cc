@@ -22,7 +22,7 @@ test("renderReviewResult degrades gracefully when JSON is missing required revie
     }
   );
 
-  assert.match(output, /Gemini returned JSON with an unexpected review shape\./);
+  assert.match(output, /returned JSON with an unexpected review shape\./);
   assert.match(output, /Missing array `findings`\./);
   assert.match(output, /Raw final message:/);
 });

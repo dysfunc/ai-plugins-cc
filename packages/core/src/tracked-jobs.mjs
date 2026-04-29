@@ -3,7 +3,19 @@ import process from "node:process";
 
 import { readJobFile, resolveJobFile, resolveJobLogFile, upsertJob, writeJobFile } from "./state.mjs";
 
-export const SESSION_ID_ENV = "GEMINI_COMPANION_SESSION_ID";
+// Canonical env var that namespaces a Claude session for ai-plugins-cc.
+// Older deployments may still set GEMINI_COMPANION_SESSION_ID; readers
+// fall back to that name when looking up the current session id.
+export const SESSION_ID_ENV = "AI_PLUGINS_CC_SESSION_ID";
+export const LEGACY_SESSION_ID_ENVS = ["GEMINI_COMPANION_SESSION_ID"];
+
+export function readSessionId(env = process.env, sessionIdEnv = SESSION_ID_ENV) {
+  if (env[sessionIdEnv]) return env[sessionIdEnv];
+  for (const legacy of LEGACY_SESSION_ID_ENVS) {
+    if (env[legacy]) return env[legacy];
+  }
+  return undefined;
+}
 
 export function nowIso() {
   return new Date().toISOString();
@@ -59,7 +71,7 @@ export function createJobLogFile(workspaceRoot, jobId, title) {
 
 export function createJobRecord(base, options = {}) {
   const env = options.env ?? process.env;
-  const sessionId = env[options.sessionIdEnv ?? SESSION_ID_ENV];
+  const sessionId = readSessionId(env, options.sessionIdEnv ?? SESSION_ID_ENV);
   return {
     ...base,
     createdAt: nowIso(),
@@ -114,7 +126,12 @@ export function createJobProgressUpdater(workspaceRoot, jobId) {
   };
 }
 
-export function createProgressReporter({ stderr = false, logFile = null, onEvent = null } = {}) {
+export function createProgressReporter({
+  stderr = false,
+  logFile = null,
+  onEvent = null,
+  stderrPrefix = "ai"
+} = {}) {
   if (!stderr && !logFile && !onEvent) {
     return null;
   }
@@ -123,7 +140,7 @@ export function createProgressReporter({ stderr = false, logFile = null, onEvent
     const event = normalizeProgressEvent(eventOrMessage);
     const stderrMessage = event.stderrMessage ?? event.message;
     if (stderr && stderrMessage) {
-      process.stderr.write(`[gemini] ${stderrMessage}\n`);
+      process.stderr.write(`[${stderrPrefix}] ${stderrMessage}\n`);
     }
     appendLogLine(logFile, event.message);
     appendLogBlock(logFile, event.logTitle, event.logBody);

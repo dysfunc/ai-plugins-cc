@@ -3,10 +3,20 @@
 import fs from "node:fs";
 import process from "node:process";
 
+import { setProviderIdentity } from "@ai-plugins-cc/core/config";
 import { terminateProcessTree } from "@ai-plugins-cc/core/process";
 import { loadState, resolveStateFile, saveState } from "@ai-plugins-cc/core/state";
 import { resolveWorkspaceRoot } from "@ai-plugins-cc/core/workspace";
 
+setProviderIdentity({
+  commandPrefix: "gemini",
+  providerId: "gemini",
+  providerLabel: "Gemini"
+});
+
+// Local SESSION_ID_ENV constant for backward compat with Claude Code hook
+// fixtures that still inject GEMINI_COMPANION_SESSION_ID directly. The
+// canonical name lives in @ai-plugins-cc/core/tracked-jobs.
 export const SESSION_ID_ENV = "GEMINI_COMPANION_SESSION_ID";
 const PLUGIN_DATA_ENV = "CLAUDE_PLUGIN_DATA";
 

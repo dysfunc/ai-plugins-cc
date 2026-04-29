@@ -6,7 +6,14 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { setProviderIdentity } from "@ai-plugins-cc/core/config";
 import { parseArgs, splitRawArgumentString } from "@ai-plugins-cc/core/args";
+
+setProviderIdentity({
+  commandPrefix: "gemini",
+  providerId: "gemini",
+  providerLabel: "Gemini"
+});
 import {
   collectContext,
   DEFAULT_MAX_FILE_BYTES,

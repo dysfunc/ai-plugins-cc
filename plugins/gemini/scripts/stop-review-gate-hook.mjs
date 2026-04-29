@@ -6,8 +6,15 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { setProviderIdentity } from "@ai-plugins-cc/core/config";
 import { getGeminiAvailability } from "./lib/gemini.mjs";
 import { loadPromptTemplate, interpolateTemplate } from "@ai-plugins-cc/core/prompts";
+
+setProviderIdentity({
+  commandPrefix: "gemini",
+  providerId: "gemini",
+  providerLabel: "Gemini"
+});
 import { getConfig, listJobs } from "@ai-plugins-cc/core/state";
 import { sortJobsNewestFirst } from "@ai-plugins-cc/core/job-control";
 import { SESSION_ID_ENV } from "@ai-plugins-cc/core/tracked-jobs";

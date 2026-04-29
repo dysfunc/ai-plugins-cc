@@ -1,3 +1,5 @@
+import { getCommandPrefix, getProviderId, getProviderLabel } from "./config.mjs";
+
 function severityRank(severity) {
   switch (severity) {
     case "critical":
@@ -104,9 +106,10 @@ function appendActiveJobsTable(lines, jobs) {
   lines.push("| Job | Kind | Status | Phase | Elapsed | Summary | Actions |");
   lines.push("| --- | --- | --- | --- | --- | --- | --- |");
   for (const job of jobs) {
-    const actions = [`/gemini:status ${job.id}`];
+    const prefix = getCommandPrefix();
+    const actions = [`/${prefix}:status ${job.id}`];
     if (job.status === "queued" || job.status === "running") {
-      actions.push(`/gemini:cancel ${job.id}`);
+      actions.push(`/${prefix}:cancel ${job.id}`);
     }
     lines.push(
       `| ${escapeMarkdownCell(job.id)} | ${escapeMarkdownCell(job.kindLabel)} | ${escapeMarkdownCell(job.status)} | ${escapeMarkdownCell(job.phase ?? "")} | ${escapeMarkdownCell(job.elapsed ?? "")} | ${escapeMarkdownCell(job.summary ?? "")} | ${actions.map((action) => `\`${action}\``).join("<br>")} |`
@@ -134,11 +137,12 @@ function pushJobDetails(lines, job, options = {}) {
   if (job.logFile && options.showLog) {
     lines.push(`  Log: ${job.logFile}`);
   }
+  const prefix = getCommandPrefix();
   if ((job.status === "queued" || job.status === "running") && options.showCancelHint) {
-    lines.push(`  Cancel: /gemini:cancel ${job.id}`);
+    lines.push(`  Cancel: /${prefix}:cancel ${job.id}`);
   }
   if (job.status !== "queued" && job.status !== "running" && options.showResultHint) {
-    lines.push(`  Result: /gemini:result ${job.id}`);
+    lines.push(`  Result: /${prefix}:result ${job.id}`);
   }
   if (job.progressPreview?.length) {
     lines.push("  Progress:");
@@ -160,15 +164,16 @@ function appendReasoningSection(lines, reasoningSummary) {
 }
 
 export function renderSetupReport(report) {
+  const providerId = getProviderId();
   const lines = [
-    "# Gemini Setup",
+    `# ${getProviderLabel()} Setup`,
     "",
     `Status: ${report.ready ? "ready" : "needs attention"}`,
     "",
     "Checks:",
     `- node: ${report.node.detail}`,
     `- npm: ${report.npm.detail}`,
-    `- gemini: ${report.gemini.detail}`,
+    `- ${providerId}: ${report[providerId]?.detail ?? "n/a"}`,
     `- auth: ${report.auth.detail}`,
     `- session runtime: ${report.sessionRuntime.label}`,
     `- review gate: ${report.reviewGateEnabled ? "enabled" : "disabled"}`,
@@ -196,9 +201,9 @@ export function renderSetupReport(report) {
 export function renderReviewResult(parsedResult, meta) {
   if (!parsedResult.parsed) {
     const lines = [
-      `# Gemini ${meta.reviewLabel}`,
+      `# ${getProviderLabel()} ${meta.reviewLabel}`,
       "",
-      "Gemini did not return valid structured JSON.",
+      `${getProviderLabel()} did not return valid structured JSON.`,
       "",
       `- Parse error: ${parsedResult.parseError}`
     ];
@@ -215,10 +220,10 @@ export function renderReviewResult(parsedResult, meta) {
   const validationError = validateReviewResultShape(parsedResult.parsed);
   if (validationError) {
     const lines = [
-      `# Gemini ${meta.reviewLabel}`,
+      `# ${getProviderLabel()} ${meta.reviewLabel}`,
       "",
       `Target: ${meta.targetLabel}`,
-      "Gemini returned JSON with an unexpected review shape.",
+      `${getProviderLabel()} returned JSON with an unexpected review shape.`,
       "",
       `- Validation error: ${validationError}`
     ];
@@ -235,7 +240,7 @@ export function renderReviewResult(parsedResult, meta) {
   const data = normalizeReviewResultData(parsedResult.parsed);
   const findings = [...data.findings].sort((left, right) => severityRank(left.severity) - severityRank(right.severity));
   const lines = [
-    `# Gemini ${meta.reviewLabel}`,
+    `# ${getProviderLabel()} ${meta.reviewLabel}`,
     "",
     `Target: ${meta.targetLabel}`,
     `Verdict: ${data.verdict}`,
@@ -274,7 +279,7 @@ export function renderNativeReviewResult(result, meta) {
   const stdout = result.stdout.trim();
   const stderr = result.stderr.trim();
   const lines = [
-    `# Gemini ${meta.reviewLabel}`,
+    `# ${getProviderLabel()} ${meta.reviewLabel}`,
     "",
     `Target: ${meta.targetLabel}`,
     ""
@@ -283,9 +288,9 @@ export function renderNativeReviewResult(result, meta) {
   if (stdout) {
     lines.push(stdout);
   } else if (result.status === 0) {
-    lines.push("Gemini review completed without any stdout output.");
+    lines.push(`${getProviderLabel()} review completed without any stdout output.`);
   } else {
-    lines.push("Gemini review failed.");
+    lines.push(`${getProviderLabel()} review failed.`);
   }
 
   if (stderr) {
@@ -307,14 +312,14 @@ export function renderTaskResult(parsedResult, meta) {
     return truncationNote ? `${body}\n${truncationNote}` : body;
   }
 
-  const message = String(parsedResult?.failureMessage ?? "").trim() || "Gemini did not return a final message.";
+  const message = String(parsedResult?.failureMessage ?? "").trim() || `${getProviderLabel()} did not return a final message.`;
   return truncationNote ? `${message}\n\n${truncationNote}` : `${message}\n`;
 }
 
 export function renderTaskCommandPreview(payload) {
   const delivery = payload.useStdin ? "stdin" : "argv";
   const lines = [
-    "# Gemini Task Command Preview",
+    `# ${getProviderLabel()} Task Command Preview`,
     "",
     `Command: ${formatPreviewCommand(payload)}`,
     `Prompt delivery: ${delivery}`,
@@ -348,12 +353,12 @@ export function renderTaskCommandPreview(payload) {
 
 export function renderStatusReport(report) {
   const lines = [
-    "# Gemini Status",
+    `# ${getProviderLabel()} Status`,
     "",
     `Session runtime: ${report.sessionRuntime.label}`,
     `Review gate: ${report.config.stopReviewGate ? "enabled" : "disabled"}`,
     "",
-    "_Phase tracking is coarse for the Gemini plugin: states are starting, running, finalizing, done, failed, or cancelled._",
+    "_Phase tracking is coarse: states are starting, running, finalizing, done, failed, or cancelled._",
     ""
   ];
 
@@ -394,14 +399,14 @@ export function renderStatusReport(report) {
 
   if (report.needsReview) {
     lines.push("The stop-time review gate is enabled.");
-    lines.push("Ending the session will trigger a fresh Gemini adversarial review and block if it finds issues.");
+    lines.push(`Ending the session will trigger a fresh ${getProviderLabel()} adversarial review and block if it finds issues.`);
   }
 
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
 export function renderJobStatusReport(job) {
-  const lines = ["# Gemini Job Status", ""];
+  const lines = [`# ${getProviderLabel()} Job Status`, ""];
   pushJobDetails(lines, job, {
     showElapsed: job.status === "queued" || job.status === "running",
     showDuration: job.status !== "queued" && job.status !== "running",
@@ -424,9 +429,10 @@ export function renderStoredJobResult(job, storedJob) {
     return `${output}${transcriptSuffix}`;
   }
 
+  const providerId = getProviderId();
   const rawOutput =
     (typeof storedJob?.result?.rawOutput === "string" && storedJob.result.rawOutput) ||
-    (typeof storedJob?.result?.gemini?.stdout === "string" && storedJob.result.gemini.stdout) ||
+    (typeof storedJob?.result?.[providerId]?.stdout === "string" && storedJob.result[providerId].stdout) ||
     "";
   if (rawOutput) {
     const output = rawOutput.endsWith("\n") ? rawOutput : `${rawOutput}\n`;
@@ -439,7 +445,7 @@ export function renderStoredJobResult(job, storedJob) {
   }
 
   const lines = [
-    `# ${job.title ?? "Gemini Result"}`,
+    `# ${job.title ?? `${getProviderLabel()} Result`}`,
     "",
     `Job: ${job.id}`,
     `Status: ${job.status}`
@@ -466,7 +472,7 @@ export function renderStoredJobResult(job, storedJob) {
 
 export function renderCancelReport(job) {
   const lines = [
-    "# Gemini Cancel",
+    `# ${getProviderLabel()} Cancel`,
     "",
     `Cancelled ${job.id}.`,
     ""
@@ -478,7 +484,7 @@ export function renderCancelReport(job) {
   if (job.summary) {
     lines.push(`- Summary: ${job.summary}`);
   }
-  lines.push("- Check `/gemini:status` for the updated queue.");
+  lines.push(`- Check \`/${getCommandPrefix()}:status\` for the updated queue.`);
 
   return `${lines.join("\n").trimEnd()}\n`;
 }

@@ -293,7 +293,7 @@ function buildAdversarialCollectionGuidance(options = {}) {
     return "Use the repository context below as primary evidence.";
   }
 
-  return "The full diff exceeded the inline cap, so only file lists, status, and short-stats are included below. Treat the absence of full diff text as missing evidence rather than an excuse to inspect the working tree (the Gemini CLI runs headless and cannot read files itself). Scope your findings to what the included summary supports, and call out where you would need diff content to be confident.";
+  return "The full diff exceeded the inline cap, so only file lists, status, and short-stats are included below. Treat the absence of full diff text as missing evidence rather than an excuse to inspect the working tree (the underlying CLI runs headless and cannot read files itself). Scope your findings to what the included summary supports, and call out where you would need diff content to be confident.";
 }
 
 export function collectReviewContext(cwd, target, options = {}) {

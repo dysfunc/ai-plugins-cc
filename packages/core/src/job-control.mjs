@@ -1,5 +1,10 @@
 import fs from "node:fs";
 
+import { getCommandPrefix } from "./config.mjs";
+import { getConfig, listJobs, readJobFile, resolveJobFile } from "./state.mjs";
+import { SESSION_ID_ENV } from "./tracked-jobs.mjs";
+import { resolveWorkspaceRoot } from "./workspace.mjs";
+
 // Provider-specific session runtime status is injected via options.
 // Defaults to a generic stub; plugins pass their own implementation.
 const DEFAULT_SESSION_RUNTIME = {
@@ -8,9 +13,6 @@ const DEFAULT_SESSION_RUNTIME = {
   detail: "Each provider task spawns a fresh CLI subprocess.",
   endpoint: null
 };
-import { getConfig, listJobs, readJobFile, resolveJobFile } from "./state.mjs";
-import { SESSION_ID_ENV } from "./tracked-jobs.mjs";
-import { resolveWorkspaceRoot } from "./workspace.mjs";
 
 export const DEFAULT_MAX_STATUS_JOBS = 8;
 export const DEFAULT_MAX_PROGRESS_LINES = 4;
@@ -129,18 +131,11 @@ function inferLegacyJobPhase(job, progressPreview = []) {
 
   for (let index = progressPreview.length - 1; index >= 0; index -= 1) {
     const line = progressPreview[index].toLowerCase();
-    if (line.includes("preparing gemini turn") || line.includes("subprocess spawned") || line.includes("starting gemini")) {
-      return "starting";
-    }
-    if (line.includes("producing output") || line.includes("running")) {
-      return "running";
-    }
-    if (line.includes("finalizing")) {
-      return "finalizing";
-    }
-    if (line.startsWith("gemini error:") || line.startsWith("failed:")) {
-      return "failed";
-    }
+    if (line.includes("preparing") && line.includes("turn")) return "starting";
+    if (line.includes("subprocess spawned") || line.startsWith("starting ")) return "starting";
+    if (line.includes("producing output") || line.includes("running")) return "running";
+    if (line.includes("finalizing")) return "finalizing";
+    if (/\berror:/.test(line) || line.startsWith("failed:")) return "failed";
   }
 
   return job.jobClass === "review" ? "running" : "running";
@@ -195,7 +190,7 @@ function matchJobReference(jobs, reference, predicate = () => true) {
     throw new Error(`Job reference "${reference}" is ambiguous. Use a longer job id.`);
   }
 
-  throw new Error(`No job found for "${reference}". Run /gemini:status to list known jobs.`);
+  throw new Error(`No job found for "${reference}". Run /${getCommandPrefix()}:status to list known jobs.`);
 }
 
 export function buildStatusSnapshot(cwd, options = {}) {
@@ -234,7 +229,7 @@ export function buildSingleJobSnapshot(cwd, reference, options = {}) {
   const jobs = sortJobsNewestFirst(listJobs(workspaceRoot));
   const selected = matchJobReference(jobs, reference);
   if (!selected) {
-    throw new Error(`No job found for "${reference}". Run /gemini:status to inspect known jobs.`);
+    throw new Error(`No job found for "${reference}". Run /${getCommandPrefix()}:status to inspect known jobs.`);
   }
 
   return {
@@ -258,14 +253,14 @@ export function resolveResultJob(cwd, reference) {
 
   const active = matchJobReference(jobs, reference, (job) => job.status === "queued" || job.status === "running");
   if (active) {
-    throw new Error(`Job ${active.id} is still ${active.status}. Check /gemini:status and try again once it finishes.`);
+    throw new Error(`Job ${active.id} is still ${active.status}. Check /${getCommandPrefix()}:status and try again once it finishes.`);
   }
 
   if (reference) {
-    throw new Error(`No finished job found for "${reference}". Run /gemini:status to inspect active jobs.`);
+    throw new Error(`No finished job found for "${reference}". Run /${getCommandPrefix()}:status to inspect active jobs.`);
   }
 
-  throw new Error("No finished Gemini jobs found for this repository yet.");
+  throw new Error("No finished jobs found for this repository yet.");
 }
 
 export function resolveCancelableJob(cwd, reference, options = {}) {
@@ -287,12 +282,12 @@ export function resolveCancelableJob(cwd, reference, options = {}) {
     return { workspaceRoot, job: sessionScopedActiveJobs[0] };
   }
   if (sessionScopedActiveJobs.length > 1) {
-    throw new Error("Multiple Gemini jobs are active. Pass a job id to /gemini:cancel.");
+    throw new Error(`Multiple jobs are active. Pass a job id to /${getCommandPrefix()}:cancel.`);
   }
 
   if (getCurrentSessionId(options)) {
-    throw new Error("No active Gemini jobs to cancel for this session.");
+    throw new Error("No active jobs to cancel for this session.");
   }
 
-  throw new Error("No active Gemini jobs to cancel.");
+  throw new Error("No active jobs to cancel.");
 }
