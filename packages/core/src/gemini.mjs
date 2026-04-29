@@ -137,6 +137,14 @@ export async function runGeminiTurn(cwd, options = {}) {
 
   emitProgress(options.onProgress, `Gemini subprocess spawned (pid ${child.pid}).`, "starting", { threadId: threadIdLike, turnId });
 
+  if (typeof options.onChildPid === "function" && Number.isFinite(child.pid)) {
+    try {
+      options.onChildPid(child.pid);
+    } catch (_) {
+      // onChildPid is a best-effort hook; never let it tear down the turn.
+    }
+  }
+
   let firstStdoutSeen = false;
   let stdout = "";
   let stderr = "";

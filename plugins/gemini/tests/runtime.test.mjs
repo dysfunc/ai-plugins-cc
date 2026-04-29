@@ -285,6 +285,27 @@ test("companion setup --json reports needs-attention when no auth is set", () =>
   assert.equal(payload.auth.loggedIn, false);
 });
 
+test("runGeminiTurn invokes onChildPid with the spawned child's PID, not the caller's", async () => {
+  const { env, fakeDir } = withFakeEnv();
+  const workspace = makeTempDir();
+  const transcriptPath = path.join(workspace, "transcript.json");
+
+  const captured = [];
+  const result = await runGeminiTurn(workspace, {
+    prompt: "ECHO:hello-world",
+    transcriptPath,
+    env,
+    onChildPid: (pid) => captured.push(pid)
+  });
+
+  assert.equal(result.status, 0, "fake gemini should exit cleanly");
+  assert.equal(captured.length, 1, "onChildPid must fire exactly once per turn");
+  const [pid] = captured;
+  assert.equal(typeof pid, "number");
+  assert.notEqual(pid, process.pid, "captured PID must be the child's, not the test runner's");
+  assert.notEqual(pid, fakeDir, "sanity: pid is a number, not a path");
+});
+
 test("companion task-resume-candidate reports no candidate on a fresh workspace", () => {
   const { env } = withFakeEnv();
   const workspace = makeTempDir();

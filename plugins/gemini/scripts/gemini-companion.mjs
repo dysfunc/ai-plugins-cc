@@ -442,7 +442,8 @@ async function executeTaskRun(request) {
     transcriptPath,
     resumeTranscriptPath,
     contextBlock: context.promptBlock,
-    onProgress: request.onProgress
+    onProgress: request.onProgress,
+    onChildPid: request.onChildPid
   });
 
   const rawOutput = typeof result.finalMessage === "string" ? result.finalMessage : "";
@@ -885,7 +886,12 @@ async function handleTaskWorker(argv) {
     () =>
       executeTaskRun({
         ...request,
-        onProgress: progress
+        onProgress: progress,
+        onChildPid: (pid) => {
+          if (Number.isFinite(pid)) {
+            upsertJob(workspaceRoot, { id: options["job-id"], providerPid: pid });
+          }
+        }
       }),
     { logFile }
   );
@@ -983,6 +989,10 @@ async function handleCancel(argv) {
   const existing = readStoredJob(workspaceRoot, job.id) ?? {};
 
   terminateProcessTree(job.pid ?? Number.NaN);
+  const providerPid = existing.providerPid ?? job.providerPid ?? null;
+  if (Number.isFinite(providerPid) && providerPid !== (job.pid ?? Number.NaN)) {
+    terminateProcessTree(providerPid);
+  }
   appendLogLine(job.logFile, "Cancelled by user.");
 
   const completedAt = nowIso();
@@ -991,6 +1001,7 @@ async function handleCancel(argv) {
     status: "cancelled",
     phase: "cancelled",
     pid: null,
+    providerPid: null,
     completedAt,
     errorMessage: "Cancelled by user."
   };
