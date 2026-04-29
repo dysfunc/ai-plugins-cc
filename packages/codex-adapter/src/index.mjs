@@ -1,2 +1,3 @@
-// Phase 3 will implement: discover, install/update, spawn, normalize.
-export {};
+export { discoverCodexInstall } from "./discover.mjs";
+export { invokeCodexCommand } from "./invoke.mjs";
+export { normalizeReviewOutput } from "./normalize.mjs";
