@@ -191,8 +191,12 @@ export async function runGeminiTurn(cwd, options = {}) {
     }, options.timeoutMs);
   }
 
+  // 'close' fires after the child has exited AND its stdio streams have
+  // drained. Resolving on 'exit' could read the accumulator before the
+  // final stdout/stderr chunks arrive on platforms where data events lag
+  // the exit event.
   const exit = await new Promise((resolve) => {
-    child.on("exit", (code, signal) => resolve({ code, signal }));
+    child.on("close", (code, signal) => resolve({ code, signal }));
     child.on("error", (err) => resolve({ code: 1, signal: null, error: err }));
   });
   if (timeoutHandle) clearTimeout(timeoutHandle);

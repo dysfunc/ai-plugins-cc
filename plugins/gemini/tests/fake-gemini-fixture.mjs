@@ -50,17 +50,32 @@ if (promptFlagIndex !== -1 && args[promptFlagIndex + 1] != null) {
   prompt = fs.readFileSync(0, "utf8");
 }
 
+function drainAndExit(code) {
+  // process.exit() doesn't wait for stdout/stderr to flush when they're
+  // piped, so large or buffered writes can be truncated. End the streams
+  // explicitly first.
+  let pending = 2;
+  const done = () => {
+    pending -= 1;
+    if (pending === 0) process.exit(code);
+  };
+  process.stdout.end(done);
+  process.stderr.end(done);
+}
+
 const echoMatch = /ECHO:([\\s\\S]+?)(?:\\n|$)/.exec(prompt);
 if (echoMatch) {
   process.stdout.write(echoMatch[1]);
   process.stdout.write("\\n");
-  process.exit(0);
+  drainAndExit(0);
+  return;
 }
 
 const failMatch = /FAIL_REASON:([^\\n]+)/.exec(prompt);
 if (failMatch) {
   process.stderr.write(failMatch[1] + "\\n");
-  process.exit(1);
+  drainAndExit(1);
+  return;
 }
 
 const sleepMatch = /SLEEP:(\\d+)/.exec(prompt);

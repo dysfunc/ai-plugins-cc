@@ -285,6 +285,24 @@ test("companion setup --json reports needs-attention when no auth is set", () =>
   assert.equal(payload.auth.loggedIn, false);
 });
 
+test("runGeminiTurn captures the full output even with a large final write", async () => {
+  const { env } = withFakeEnv();
+  const workspace = makeTempDir();
+  const transcriptPath = path.join(workspace, "t.json");
+  const payload = "X".repeat(64 * 1024);
+  const result = await runGeminiTurn(workspace, {
+    prompt: `ECHO:${payload}`,
+    transcriptPath,
+    env
+  });
+  assert.equal(result.status, 0, result.error ?? result.stderr);
+  assert.equal(
+    result.finalMessage.length,
+    payload.length,
+    `expected ${payload.length} bytes captured, got ${result.finalMessage.length}`
+  );
+});
+
 test("runGeminiTurn invokes onChildPid with the spawned child's PID, not the caller's", async () => {
   const { env, fakeDir } = withFakeEnv();
   const workspace = makeTempDir();
