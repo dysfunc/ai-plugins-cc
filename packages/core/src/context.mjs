@@ -248,7 +248,24 @@ function escapeRegex(character) {
   return /[\\^$.*+?()[\]{}|]/.test(character) ? `\\${character}` : character;
 }
 
+function pickFence(content) {
+  // Markdown-style: pick a fence longer than any run of backticks inside the
+  // content. Triple-backtick file content would otherwise close the outer
+  // fence and let following bytes be reinterpreted as prompt directives.
+  let longest = 2;
+  const runs = String(content).match(/`+/g);
+  if (runs) {
+    for (const run of runs) {
+      if (run.length > longest) longest = run.length;
+    }
+  }
+  return "`".repeat(longest + 1);
+}
+
 function buildPromptBlock(includedFiles) {
-  const blocks = includedFiles.map((file) => `\`\`\`${file.path}\n${file.content}\n\`\`\``);
+  const blocks = includedFiles.map((file) => {
+    const fence = pickFence(file.content);
+    return `${fence}${file.path}\n${file.content}\n${fence}`;
+  });
   return `## Context files\n\n${blocks.join("\n\n")}`;
 }

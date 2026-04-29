@@ -151,6 +151,24 @@ test("collectContext rejects file patterns that resolve outside the workspace", 
   );
 });
 
+test("collectContext fences each file with backticks longer than any in-file run", () => {
+  const cwd = makeTempTree();
+  // Three backticks inside a file would close a triple-fence prompt block
+  // and let subsequent bytes leak out as plain prompt text.
+  writeText(cwd, "tricky.md", "```js\nrun();\n```\n");
+  writeText(cwd, "plain.txt", "just text\n");
+
+  const result = collectContext({ cwd, dirs: ["."], maxFiles: 40, maxFileBytes: 32768 });
+
+  // tricky.md opens with exactly 4 backticks (the inner ``` is not enough
+  // to close it). The (?!`) lookahead enforces "exactly 4, not 5+".
+  assert.match(result.promptBlock, /(?<!`)`{4}(?!`)tricky\.md\n/);
+  // ...and closes with a matching 4-backtick fence.
+  assert.match(result.promptBlock, /\n(?<!`)`{4}(?!`)/);
+  // plain.txt uses the default 3-backtick fence.
+  assert.match(result.promptBlock, /(?<!`)`{3}(?!`)plain\.txt\n/);
+});
+
 test("collectContext allows escaping paths when allowOutsideWorkspace is set", () => {
   const cwd = makeTempTree();
   const sibling = makeTempTree();
