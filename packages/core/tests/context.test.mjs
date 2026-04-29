@@ -117,3 +117,52 @@ test("splitCommaList trims whitespace and drops empty entries", () => {
   assert.deepEqual(splitCommaList("  alpha , beta ,, "), ["alpha", "beta"]);
   assert.deepEqual(splitCommaList("one,"), ["one"]);
 });
+
+test("collectContext rejects dirs that escape the workspace via ..", () => {
+  const cwd = makeTempTree();
+  const sibling = makeTempTree();
+  writeText(sibling, "secret.txt", "leak\n");
+
+  const escape = path.relative(cwd, sibling);
+  assert.throws(
+    () => collectContext({ cwd, dirs: [escape], maxFiles: 40, maxFileBytes: 32768 }),
+    /escapes workspace root/
+  );
+});
+
+test("collectContext rejects absolute dirs outside the workspace", () => {
+  const cwd = makeTempTree();
+  const sibling = makeTempTree();
+
+  assert.throws(
+    () => collectContext({ cwd, dirs: [sibling], maxFiles: 40, maxFileBytes: 32768 }),
+    /escapes workspace root/
+  );
+});
+
+test("collectContext rejects file patterns that resolve outside the workspace", () => {
+  const cwd = makeTempTree();
+  const sibling = makeTempTree();
+  const leakedFile = writeText(sibling, "secret.txt", "leak\n");
+
+  assert.throws(
+    () => collectContext({ cwd, files: [leakedFile], maxFiles: 40, maxFileBytes: 32768 }),
+    /escapes workspace root/
+  );
+});
+
+test("collectContext allows escaping paths when allowOutsideWorkspace is set", () => {
+  const cwd = makeTempTree();
+  const sibling = makeTempTree();
+  writeText(sibling, "permitted.txt", "ok\n");
+
+  const result = collectContext({
+    cwd,
+    dirs: [sibling],
+    maxFiles: 40,
+    maxFileBytes: 32768,
+    allowOutsideWorkspace: true
+  });
+  assert.equal(result.includedFiles.length, 1, "expected one file when escape is opted in");
+  assert.match(result.includedFiles[0].path, /permitted\.txt$/);
+});

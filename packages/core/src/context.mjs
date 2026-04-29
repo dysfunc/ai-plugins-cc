@@ -20,16 +20,29 @@ export function collectContext({
   dirs = [],
   files = [],
   maxFiles = DEFAULT_MAX_FILES,
-  maxFileBytes = DEFAULT_MAX_FILE_BYTES
+  maxFileBytes = DEFAULT_MAX_FILE_BYTES,
+  allowOutsideWorkspace = false
 } = {}) {
   validateLimits(maxFiles, maxFileBytes);
 
   const root = path.resolve(cwd ?? process.cwd());
+  const rootForContainment = resolveRealPath(root);
   const candidatesByPath = new Map();
   const skippedFiles = [];
 
+  const assertWithinRoot = (absolutePath, label) => {
+    if (allowOutsideWorkspace) return;
+    if (!isWithinRoot(rootForContainment, absolutePath)) {
+      throw new Error(
+        `Context path escapes workspace root: ${label} (resolved to ${absolutePath}). ` +
+        `Pass allowOutsideWorkspace: true to opt in.`
+      );
+    }
+  };
+
   for (const dir of dirs ?? []) {
     const absoluteDir = path.resolve(root, dir);
+    assertWithinRoot(absoluteDir, dir);
     if (!fs.existsSync(absoluteDir)) {
       throw new Error(`Context directory does not exist: ${dir}`);
     }
@@ -53,6 +66,7 @@ export function collectContext({
     for (const pattern of patterns) {
       if (hasGlobMagic(pattern)) continue;
       const absolutePath = path.resolve(root, pattern);
+      assertWithinRoot(absolutePath, pattern);
       if (fs.existsSync(absolutePath) && fs.statSync(absolutePath).isFile()) {
         candidatesByPath.set(resolveRealPath(absolutePath), absolutePath);
       }
@@ -135,6 +149,29 @@ function resolveRealPath(filePath) {
   } catch {
     return path.resolve(filePath);
   }
+}
+
+function resolveExistingAncestor(filePath) {
+  let current = path.resolve(filePath);
+  const trailing = [];
+  while (true) {
+    try {
+      const real = fs.realpathSync.native(current);
+      return trailing.length === 0 ? real : path.join(real, ...trailing);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return path.resolve(filePath);
+      trailing.unshift(path.basename(current));
+      current = parent;
+    }
+  }
+}
+
+function isWithinRoot(rootRealpath, absolutePath) {
+  const candidate = resolveExistingAncestor(absolutePath);
+  if (candidate === rootRealpath) return true;
+  const prefix = rootRealpath.endsWith(path.sep) ? rootRealpath : `${rootRealpath}${path.sep}`;
+  return candidate.startsWith(prefix);
 }
 
 function readFilePrefix(filePath, byteLength) {
