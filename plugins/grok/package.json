@@ -12,7 +12,5 @@
     "@ai-plugins-cc/core": "*",
     "@ai-plugins-cc/shared-prompts": "*"
   },
-  "scripts": {
-    "test": "node --test tests/*.test.mjs"
-  }
+  "scripts": {}
 }
