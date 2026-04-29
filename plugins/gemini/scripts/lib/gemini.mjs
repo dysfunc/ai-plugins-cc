@@ -3,9 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-import { readJsonFile } from "./fs.mjs";
-import { binaryAvailable, terminateProcessTree } from "./process.mjs";
-import { listJobs } from "./state.mjs";
+import { readJsonFile } from "@ai-plugins-cc/core/fs";
+import { binaryAvailable, terminateProcessTree } from "@ai-plugins-cc/core/process";
+import { listJobs } from "@ai-plugins-cc/core/state";
 
 const TASK_THREAD_PREFIX = "Gemini Companion Task";
 const DEFAULT_CONTINUE_PROMPT =

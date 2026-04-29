@@ -3,7 +3,6 @@
 export * from "./args.mjs";
 export * from "./context.mjs";
 export * from "./fs.mjs";
-export * from "./gemini.mjs";
 export * from "./git.mjs";
 export * from "./job-control.mjs";
 export * from "./process.mjs";

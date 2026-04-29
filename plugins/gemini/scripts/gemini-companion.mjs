@@ -25,7 +25,7 @@ import {
     readOutputSchema,
     runGeminiReview,
     runGeminiTurn
-  } from "@ai-plugins-cc/core/gemini";
+  } from "./lib/gemini.mjs";
 import { readStdinIfPiped } from "@ai-plugins-cc/core/fs";
 import { collectReviewContext, ensureGitRepository, resolveReviewTarget } from "@ai-plugins-cc/core/git";
 import { binaryAvailable, terminateProcessTree } from "@ai-plugins-cc/core/process";
@@ -920,7 +920,10 @@ async function handleStatus(argv) {
     throw new Error("`status --wait` requires a job id.");
   }
 
-  const report = buildStatusSnapshot(cwd, { all: options.all });
+  const report = buildStatusSnapshot(cwd, {
+    all: options.all,
+    getSessionRuntime: getSessionRuntimeStatus
+  });
   outputResult(options.json ? report : renderStatusReport(report), options.json);
 }
 

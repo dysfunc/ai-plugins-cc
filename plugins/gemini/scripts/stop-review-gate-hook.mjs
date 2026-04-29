@@ -6,7 +6,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { getGeminiAvailability } from "@ai-plugins-cc/core/gemini";
+import { getGeminiAvailability } from "./lib/gemini.mjs";
 import { loadPromptTemplate, interpolateTemplate } from "@ai-plugins-cc/core/prompts";
 import { getConfig, listJobs } from "@ai-plugins-cc/core/state";
 import { sortJobsNewestFirst } from "@ai-plugins-cc/core/job-control";

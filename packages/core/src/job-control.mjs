@@ -1,6 +1,13 @@
 import fs from "node:fs";
 
-import { getSessionRuntimeStatus } from "./gemini.mjs";
+// Provider-specific session runtime status is injected via options.
+// Defaults to a generic stub; plugins pass their own implementation.
+const DEFAULT_SESSION_RUNTIME = {
+  mode: "direct",
+  label: "direct invocation",
+  detail: "Each provider task spawns a fresh CLI subprocess.",
+  endpoint: null
+};
 import { getConfig, listJobs, readJobFile, resolveJobFile } from "./state.mjs";
 import { SESSION_ID_ENV } from "./tracked-jobs.mjs";
 import { resolveWorkspaceRoot } from "./workspace.mjs";
@@ -212,7 +219,9 @@ export function buildStatusSnapshot(cwd, options = {}) {
   return {
     workspaceRoot,
     config,
-    sessionRuntime: getSessionRuntimeStatus(options.env, workspaceRoot),
+    sessionRuntime: typeof options.getSessionRuntime === "function"
+      ? options.getSessionRuntime(options.env, workspaceRoot)
+      : (options.sessionRuntime ?? DEFAULT_SESSION_RUNTIME),
     running,
     latestFinished,
     recent,

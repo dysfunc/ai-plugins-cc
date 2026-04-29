@@ -11,7 +11,7 @@ import {
   getGeminiAuthStatus,
   parseStructuredOutput,
   runGeminiTurn
-} from "@ai-plugins-cc/core/gemini";
+} from "../scripts/lib/gemini.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const COMPANION = path.join(ROOT, "scripts", "gemini-companion.mjs");

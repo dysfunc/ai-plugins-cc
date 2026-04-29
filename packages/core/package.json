@@ -14,7 +14,6 @@
     "./args": "./src/args.mjs",
     "./context": "./src/context.mjs",
     "./fs": "./src/fs.mjs",
-    "./gemini": "./src/gemini.mjs",
     "./git": "./src/git.mjs",
     "./job-control": "./src/job-control.mjs",
     "./process": "./src/process.mjs",
