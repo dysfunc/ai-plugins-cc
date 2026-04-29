@@ -1,0 +1,39 @@
+{
+  "name": "ai-plugins-cc",
+  "owner": {
+    "name": "Kieran Boyle"
+  },
+  "metadata": {
+    "description": "Claude Code plugins for delegating to external AI CLIs (Codex, Gemini, Grok), with a shared core and an umbrella plugin.",
+    "version": "0.0.0"
+  },
+  "plugins": [
+    {
+      "name": "gemini",
+      "description": "Use Gemini from Claude Code to review code or delegate tasks.",
+      "version": "0.0.0",
+      "author": {
+        "name": "Kieran Boyle"
+      },
+      "source": "./plugins/gemini"
+    },
+    {
+      "name": "grok",
+      "description": "Use Grok from Claude Code to review code or delegate tasks.",
+      "version": "0.0.0",
+      "author": {
+        "name": "Kieran Boyle"
+      },
+      "source": "./plugins/grok"
+    },
+    {
+      "name": "ai",
+      "description": "Umbrella plugin: dispatch /ai:review|rescue|gater across providers, plus /ai:compare for fan-out.",
+      "version": "0.0.0",
+      "author": {
+        "name": "Kieran Boyle"
+      },
+      "source": "./plugins/ai"
+    }
+  ]
+}

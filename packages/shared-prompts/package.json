@@ -1,0 +1,22 @@
+{
+  "name": "@ai-plugins-cc/shared-prompts",
+  "version": "0.0.0",
+  "private": false,
+  "type": "module",
+  "description": "Canonical prompt templates and review-output schema shared across ai-plugins-cc providers.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./prompts/*": "./prompts/*",
+    "./schemas/*": "./schemas/*"
+  },
+  "files": [
+    "index.mjs",
+    "prompts/",
+    "schemas/"
+  ]
+}

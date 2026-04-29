@@ -1,0 +1,70 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage
+*.lcov
+.nyc_output
+
+# Dependencies
+node_modules/
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Caches
+.npm
+.eslintcache
+.stylelintcache
+.cache
+.parcel-cache
+
+# Build outputs
+build/Release
+dist/
+output/
+
+# OS
+.DS_Store
+**/.DS_Store
+
+# Editor
+.vscode-test
+.tern-port
+
+# Env
+.env
+.env.*
+!.env.example
+
+# pnpm / yarn
+.pnpm-store
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# Plugin-specific generated dirs
+plugins/*/.generated/
+
+# Packaged tarballs
+*.tgz
+*.zip

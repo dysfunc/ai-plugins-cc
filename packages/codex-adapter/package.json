@@ -1,0 +1,32 @@
+{
+  "name": "@ai-plugins-cc/codex-adapter",
+  "version": "0.0.0",
+  "private": false,
+  "type": "module",
+  "description": "Adapter that integrates with upstream openai/codex-plugin-cc: discovery, version pinning, subprocess invocation, output normalization.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "./src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./discover": "./src/discover.mjs",
+    "./install": "./src/install.mjs",
+    "./normalize": "./src/normalize.mjs"
+  },
+  "dependencies": {
+    "@ai-plugins-cc/core": "workspace:^",
+    "@ai-plugins-cc/shared-prompts": "workspace:^"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "ai-plugins-cc": {
+    "upstream": {
+      "repo": "openai/codex-plugin-cc",
+      "pinnedTag": null,
+      "pinnedSha": null
+    }
+  }
+}

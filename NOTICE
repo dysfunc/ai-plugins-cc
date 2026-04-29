@@ -1,0 +1,9 @@
+ai-plugins-cc
+Copyright 2026 Kieran Boyle
+
+This product includes software developed by the ai-plugins-cc contributors.
+
+This repository's gemini and grok plugins were originally derived from
+openai/codex-plugin-cc (Apache License 2.0). The codex-adapter package
+integrates with upstream openai/codex-plugin-cc at runtime; its source is
+not vendored here.

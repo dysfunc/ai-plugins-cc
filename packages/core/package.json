@@ -1,0 +1,30 @@
+{
+  "name": "@ai-plugins-cc/core",
+  "version": "0.0.0",
+  "private": false,
+  "type": "module",
+  "description": "Shared core library for ai-plugins-cc: state, process, git, context, render, job-control, hooks, provider contract.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "./src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./state": "./src/state.mjs",
+    "./process": "./src/process.mjs",
+    "./git": "./src/git.mjs",
+    "./context": "./src/context.mjs",
+    "./render": "./src/render.mjs",
+    "./job-control": "./src/job-control.mjs",
+    "./tracked-jobs": "./src/tracked-jobs.mjs",
+    "./workspace": "./src/workspace.mjs",
+    "./fs": "./src/fs.mjs",
+    "./args": "./src/args.mjs",
+    "./hooks": "./src/hooks.mjs",
+    "./provider": "./src/provider.mjs"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  }
+}

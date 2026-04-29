@@ -1,0 +1,27 @@
+{
+  "name": "@ai-plugins-cc/monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Monorepo for ai-plugins-cc: shared core, provider plugins (gemini, grok), codex adapter to upstream, and ai umbrella plugin.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "plugins/*"
+  ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "lint": "echo 'lint not configured yet'",
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "changeset:publish": "changeset publish",
+    "core:check-changeset": "node scripts/check-core-changeset.mjs"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.0",
+    "@types/node": "^22.0.0"
+  }
+}
