@@ -38,7 +38,7 @@ function usage(stream = process.stderr) {
       "  setup [--json]                          aggregate status across providers",
       "  verify --provider=ID [--json]           probe one provider",
       "  settings show|enable|disable|...        manage ~/.claude/ai-plugins-cc.json",
-      "  codex-update [--tag=vX.Y.Z]             install pinned upstream codex",
+      "  codex-update [--tag=vX.Y.Z] [--pin]      install pinned upstream codex",
       "Examples:",
       "  ai-companion.mjs review --provider=gemini --scope=diff",
       "  ai-companion.mjs compare --providers=gemini,codex --scope=diff",
@@ -128,26 +128,38 @@ async function runCodexUpdate(argv) {
   let tag = null;
   let into = null;
   let json = false;
+  let pin = false;
   for (const arg of argv.slice(1)) {
     if (arg.startsWith("--tag=")) tag = arg.slice("--tag=".length);
     else if (arg.startsWith("--into=")) into = arg.slice("--into=".length);
     else if (arg === "--json") json = true;
+    else if (arg === "--pin") pin = true;
   }
 
   try {
     const result = await installCodexUpstream({
       tag: tag ?? undefined,
-      into: into ?? undefined
+      into: into ?? undefined,
+      pin
     });
     if (json) {
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     } else {
-      process.stdout.write(
+      const lines = [
         `Installed openai/codex-plugin-cc ${result.tag} ` +
-          `(version ${result.version ?? "unknown"}) into ${result.root}\n` +
-          `SHA-256: ${result.sha}\n` +
-          (result.replaced ? "Replaced an existing install.\n" : "")
-      );
+          `(version ${result.version ?? "unknown"}) into ${result.root}`,
+        `SHA-256: ${result.sha}`
+      ];
+      if (result.replaced) lines.push("Replaced an existing install.");
+      if (result.pin) {
+        if (result.pin.written) {
+          lines.push(`Pinned SHA written to ${result.pin.packageJsonPath}`);
+        } else {
+          lines.push(`SHA NOT pinned: ${result.pin.reason}`);
+          lines.push(`If you intended to pin, set ai-plugins-cc.upstream.pinnedSha = ${result.sha} manually.`);
+        }
+      }
+      process.stdout.write(`${lines.join("\n")}\n`);
     }
     process.exit(0);
   } catch (err) {

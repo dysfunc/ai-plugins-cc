@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -20,8 +20,11 @@ const DEFAULT_REPO = "openai/codex-plugin-cc";
  *   - fetchImpl  async fn(url) → Buffer (default: built-in fetch)
  *   - extractImpl async fn(tarballPath, destDir) → void (default: shell `tar -xzf`)
  *   - adapterPackageJson  path to the package.json holding the pinned config
+ *   - pin        if true, write observedSha back to the adapter's package.json
+ *               (or to options.adapterPackageJson if provided). Skipped with a
+ *               warning when the target is inside node_modules.
  *
- * Returns { root, repo, tag, sha, version, replaced }.
+ * Returns { root, repo, tag, sha, version, replaced, pin? }.
  */
 export async function installCodexUpstream(options = {}) {
   const config = readUpstreamConfig(options.adapterPackageJson ?? ADAPTER_PACKAGE_JSON);
@@ -92,14 +95,63 @@ export async function installCodexUpstream(options = {}) {
   // Best-effort cleanup of the staging tree.
   try { fs.rmSync(stagingRoot, { recursive: true, force: true }); } catch { /* leave a stray temp dir */ }
 
+  let pin = null;
+  if (options.pin) {
+    pin = pinObservedSha(observedSha, options.adapterPackageJson ?? ADAPTER_PACKAGE_JSON);
+  }
+
   return {
     root: into,
     repo,
     tag,
     sha: observedSha,
     version: readPluginVersion(into),
-    replaced
+    replaced,
+    pin
   };
+}
+
+/**
+ * Write `pinnedSha = sha` into the codex-adapter's package.json under
+ * `ai-plugins-cc.upstream`. Returns { written, packageJsonPath, sha,
+ * reason? }. Refuses to write when the target lives inside node_modules
+ * (pinning is a maintainer task that mutates the source tree).
+ */
+export function pinObservedSha(sha, packageJsonPath = ADAPTER_PACKAGE_JSON) {
+  const NM = `${path.sep}node_modules${path.sep}`;
+  if (packageJsonPath.includes(NM)) {
+    return {
+      written: false,
+      packageJsonPath,
+      sha,
+      reason:
+        "Refusing to write to a package.json inside node_modules. Pinning is a " +
+        "maintainer task — run /ai:codex-update --pin from a clone of the " +
+        "ai-plugins-cc repo, then commit the SHA bump."
+    };
+  }
+
+  let pkg;
+  try {
+    pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  } catch (err) {
+    return {
+      written: false,
+      packageJsonPath,
+      sha,
+      reason: `Could not read package.json: ${err.message}`
+    };
+  }
+  if (!pkg["ai-plugins-cc"]) pkg["ai-plugins-cc"] = {};
+  if (!pkg["ai-plugins-cc"].upstream) pkg["ai-plugins-cc"].upstream = {};
+  pkg["ai-plugins-cc"].upstream.pinnedSha = sha;
+
+  const suffix = `${process.pid}.${randomBytes(4).toString("hex")}`;
+  const tmp = `${packageJsonPath}.tmp.${suffix}`;
+  fs.writeFileSync(tmp, `${JSON.stringify(pkg, null, 2)}\n`, "utf8");
+  fs.renameSync(tmp, packageJsonPath);
+
+  return { written: true, packageJsonPath, sha };
 }
 
 export function readUpstreamConfig(packageJsonPath) {

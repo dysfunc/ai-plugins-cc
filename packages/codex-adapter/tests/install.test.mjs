@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { installCodexUpstream } from "@ai-plugins-cc/codex-adapter";
+import { installCodexUpstream, pinObservedSha } from "@ai-plugins-cc/codex-adapter";
 
 function mkdtemp(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -142,4 +142,107 @@ test("installCodexUpstream throws a clear error when no tag is pinned and none i
     }),
     /No upstream tag pinned/
   );
+});
+
+test("installCodexUpstream with pin: true writes observedSha back to the adapter package.json", async () => {
+  const { tarball } = buildFakeUpstreamTarball({ tag: "v4.0.0", version: "4.0.0" });
+  const into = path.join(mkdtemp("install-pin-"), "codex-plugin-cc");
+  const adapterPkgPath = path.join(mkdtemp("pin-pkg-"), "package.json");
+  fs.writeFileSync(
+    adapterPkgPath,
+    JSON.stringify({ "ai-plugins-cc": { upstream: { repo: "openai/codex-plugin-cc", pinnedTag: "v4.0.0", pinnedSha: null } } }, null, 2),
+    "utf8"
+  );
+
+  const result = await installCodexUpstream({
+    tag: "v4.0.0",
+    into,
+    adapterPackageJson: adapterPkgPath,
+    fetchImpl: fakeFetchReturning(tarball),
+    pin: true
+  });
+
+  assert.equal(result.pin.written, true);
+  assert.equal(result.pin.sha, result.sha);
+  const after = JSON.parse(fs.readFileSync(adapterPkgPath, "utf8"));
+  assert.equal(after["ai-plugins-cc"].upstream.pinnedSha, result.sha, "pinnedSha must be persisted");
+});
+
+test("installCodexUpstream with pin: true refuses to write inside node_modules and explains why", async () => {
+  const { tarball } = buildFakeUpstreamTarball({ tag: "v4.1.0" });
+  const into = path.join(mkdtemp("install-pin-nm-"), "codex-plugin-cc");
+  const fakeNodeModules = path.join(
+    mkdtemp("pin-nm-"),
+    "node_modules",
+    "@ai-plugins-cc",
+    "codex-adapter"
+  );
+  fs.mkdirSync(fakeNodeModules, { recursive: true });
+  const adapterPkgPath = path.join(fakeNodeModules, "package.json");
+  fs.writeFileSync(
+    adapterPkgPath,
+    JSON.stringify({ "ai-plugins-cc": { upstream: { repo: "openai/codex-plugin-cc", pinnedTag: "v4.1.0" } } }, null, 2),
+    "utf8"
+  );
+
+  const result = await installCodexUpstream({
+    tag: "v4.1.0",
+    into,
+    adapterPackageJson: adapterPkgPath,
+    fetchImpl: fakeFetchReturning(tarball),
+    pin: true
+  });
+
+  assert.equal(result.pin.written, false);
+  assert.match(result.pin.reason, /inside node_modules/);
+  // The package.json must not have been mutated.
+  const after = JSON.parse(fs.readFileSync(adapterPkgPath, "utf8"));
+  assert.equal(after["ai-plugins-cc"].upstream.pinnedSha, undefined);
+});
+
+test("after pinning, a subsequent install with the same tag verifies cleanly", async () => {
+  const adapterPkgPath = path.join(mkdtemp("pin-roundtrip-pkg-"), "package.json");
+  fs.writeFileSync(
+    adapterPkgPath,
+    JSON.stringify({ "ai-plugins-cc": { upstream: { repo: "openai/codex-plugin-cc", pinnedTag: "v5.0.0", pinnedSha: null } } }, null, 2),
+    "utf8"
+  );
+
+  // Build the tarball once so first install and second install fetch the same bytes.
+  const { tarball } = buildFakeUpstreamTarball({ tag: "v5.0.0" });
+  const fetchImpl = fakeFetchReturning(tarball);
+
+  // First install with --pin captures the SHA.
+  const into1 = path.join(mkdtemp("install-roundtrip1-"), "codex-plugin-cc");
+  const first = await installCodexUpstream({
+    tag: "v5.0.0",
+    into: into1,
+    adapterPackageJson: adapterPkgPath,
+    fetchImpl,
+    pin: true
+  });
+  assert.equal(first.pin.written, true);
+
+  // Second install reads the now-pinned SHA from package.json and verifies.
+  const into2 = path.join(mkdtemp("install-roundtrip2-"), "codex-plugin-cc");
+  const second = await installCodexUpstream({
+    tag: "v5.0.0",
+    into: into2,
+    adapterPackageJson: adapterPkgPath,
+    fetchImpl
+  });
+  assert.equal(second.sha, first.sha);
+});
+
+test("pinObservedSha works standalone for explicit re-pin flows", () => {
+  const adapterPkgPath = path.join(mkdtemp("pin-standalone-"), "package.json");
+  fs.writeFileSync(
+    adapterPkgPath,
+    JSON.stringify({ "ai-plugins-cc": { upstream: { repo: "openai/codex-plugin-cc", pinnedTag: "v9.9.9" } } }, null, 2),
+    "utf8"
+  );
+  const result = pinObservedSha("a".repeat(64), adapterPkgPath);
+  assert.equal(result.written, true);
+  const after = JSON.parse(fs.readFileSync(adapterPkgPath, "utf8"));
+  assert.equal(after["ai-plugins-cc"].upstream.pinnedSha, "a".repeat(64));
 });
