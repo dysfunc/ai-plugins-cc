@@ -29,11 +29,14 @@ export function writeFakeCodexInstall(options = {}) {
 }
 
 const COMPANION_SOURCE = `#!/usr/bin/env node
-// Minimal fake codex-companion that supports just enough to test the adapter.
+// Minimal fake codex-companion that supports just enough to test the adapter
+// and the ai umbrella's codex probe.
 //   review --json                 → emit the canned review object
 //   review --json --shape=bad     → emit invalid JSON shape (missing findings)
 //   review --json --shape=unknown → emit unknown verdict
 //   review --json --explode       → exit 1 with stderr message
+//   setup --json                  → emit a setup status report.
+//                                   Honors FAKE_CODEX_AUTH=1 to flip auth.loggedIn.
 //   sleep <ms>                    → sleep N ms before exiting (timeout test)
 //   burst <bytes>                 → write N bytes of stdout (cap test)
 //   --version                     → print "codex-fake X.Y.Z"
@@ -49,6 +52,21 @@ function flush(code) {
 
 if (args.includes("--version")) {
   process.stdout.write("codex-fake 1.0.4\\n");
+  flush(0);
+} else if (args[0] === "setup" && args.includes("--json")) {
+  const loggedIn = process.env.FAKE_CODEX_AUTH === "1";
+  const payload = {
+    ready: loggedIn,
+    node: { available: true, detail: process.version },
+    codex: { available: true, detail: "codex-fake 1.0.4" },
+    auth: {
+      loggedIn,
+      detail: loggedIn ? "OPENAI_API_KEY is set" : "no codex auth detected"
+    },
+    sessionRuntime: { mode: "direct", label: "direct invocation" },
+    reviewGateEnabled: false
+  };
+  process.stdout.write(JSON.stringify(payload, null, 2) + "\\n");
   flush(0);
 } else if (args[0] === "sleep") {
   const ms = Number(args[1] ?? "0");

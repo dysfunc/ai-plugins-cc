@@ -6,7 +6,7 @@
 
 import process from "node:process";
 
-import { discoverCodexInstall } from "@ai-plugins-cc/codex-adapter";
+import { discoverCodexInstall, invokeCodexCommand } from "@ai-plugins-cc/codex-adapter";
 
 import { dispatchToProvider } from "./dispatch.mjs";
 import { listProviders } from "./providers.mjs";
@@ -100,16 +100,19 @@ async function probeInHouseProvider(providerId, options) {
   };
 }
 
-async function probeCodex(_options) {
-  // Codex is special: the "CLI" for our purposes is the upstream
-  // codex-plugin-cc install, not a local binary. We don't attempt to invoke
-  // the upstream companion here — that needs network for first install. We
-  // just report whether discovery succeeds, and let the wizard drive the
-  // install separately via /ai:codex-update.
+async function probeCodex(options = {}) {
+  // Codex is special: there's no local CLI binary; the "CLI" for our
+  // purposes is the upstream openai/codex-plugin-cc install. Two layers
+  // of check:
+  //   1. Discovery — is upstream installed at all?
+  //   2. If so, run upstream's own `setup --json` to get its real readiness
+  //      signal (CLI version, auth, session runtime, …) instead of just
+  //      sniffing env vars ourselves.
+
   let install;
   try {
     install = discoverCodexInstall();
-  } catch (err) {
+  } catch {
     return {
       providerId: "codex",
       ready: false,
@@ -120,20 +123,70 @@ async function probeCodex(_options) {
       raw: null
     };
   }
-  // Upstream is installed; auth state depends on env vars the user controls.
-  const env = process.env;
-  const hasAuth = Boolean(env.OPENAI_API_KEY || env.CODEX_API_KEY);
+
+  // Upstream is on disk — ask it to introspect itself. Same setup --json
+  // contract every plugin in this family ships.
+  let invocation;
+  try {
+    invocation = await invokeCodexCommand({
+      args: ["setup", "--json"],
+      install,
+      timeoutMs: options.timeoutMs ?? PROBE_TIMEOUT_MS
+    });
+  } catch (err) {
+    return {
+      providerId: "codex",
+      ready: false,
+      available: true,
+      installed: true,
+      loggedIn: false,
+      detail: `Could not invoke upstream codex setup: ${err?.message ?? err}`,
+      raw: { install: snapshotInstall(install) }
+    };
+  }
+
+  if (invocation.status !== 0) {
+    return {
+      providerId: "codex",
+      ready: false,
+      available: true,
+      installed: true,
+      loggedIn: false,
+      detail: `Upstream codex setup exited ${invocation.status}: ${truncate(invocation.stderr, 240)}`,
+      raw: { install: snapshotInstall(install), invocationStderr: invocation.stderr }
+    };
+  }
+
+  let raw = null;
+  try {
+    raw = JSON.parse(invocation.stdout);
+  } catch (err) {
+    return {
+      providerId: "codex",
+      ready: false,
+      available: true,
+      installed: true,
+      loggedIn: false,
+      detail: `Upstream codex setup --json was not valid JSON: ${err.message}`,
+      raw: { install: snapshotInstall(install), stdoutPreview: truncate(invocation.stdout, 240) }
+    };
+  }
+
+  const cliBlock = raw.codex ?? raw.cli ?? null;
+  const auth = raw.auth ?? null;
   return {
     providerId: "codex",
-    ready: hasAuth,
-    available: true,
+    ready: Boolean(raw.ready),
+    available: Boolean(cliBlock?.available ?? true),
     installed: true,
-    loggedIn: hasAuth,
-    detail: hasAuth
-      ? `Upstream codex installed at ${install.root} (version ${install.version ?? "unknown"}).`
-      : "Upstream codex is installed but no OPENAI_API_KEY (or CODEX_API_KEY) is set.",
-    raw: { install: { root: install.root, version: install.version, source: install.source } }
+    loggedIn: Boolean(auth?.loggedIn ?? false),
+    detail: summarizeProbe({ available: cliBlock?.available ?? true, loggedIn: auth?.loggedIn, ready: raw.ready }),
+    raw: { install: snapshotInstall(install), upstream: raw }
   };
+}
+
+function snapshotInstall(install) {
+  return { root: install.root, version: install.version, source: install.source };
 }
 
 function summarizeProbe({ available, loggedIn, ready }) {
