@@ -64,15 +64,13 @@ Each provider's `setup` command (`/gemini:setup`, `/grok:setup`, etc.) reports w
 
 ### Node version requirements
 
-This monorepo's own packages need Node `>=20.0.0`, but the **provider CLIs we drive** have their own minimums:
+This monorepo's own packages need Node `>=20.0.0`. The **provider CLIs we drive** have their own minimums:
 
-| CLI | Node minimum | Notes |
-|---|---|---|
-| `@google/gemini-cli` (Gemini) | Node 20+ | Recent versions track current LTS. |
-| `grok-dev` (Grok) | **Node ≥20.17** | Several transitive deps want `node:diagnostics_channel`, which lands in 20.17. Older Node installs successfully but fails at runtime with `Cannot find package "node:diagnostics_channel"`. |
-| Upstream `openai/codex-plugin-cc` (Codex) | See its `package.json` engines field for the pinned tag. | Read after `/ai:codex-update`. |
-
-If you're on `nvm`, the simplest fix is `nvm install 22 && nvm use 22` before running `/ai:setup`. The `/ai:setup` wizard pre-flights Node version for Grok specifically and offers to skip the install when the runtime would fail.
+| CLI | Notes |
+|---|---|
+| `@google/gemini-cli` (Gemini) | Node 20+; recent versions track current LTS. Auto-installed by `/ai:setup`. |
+| Grok | **No official xAI CLI we can confidently auto-install.** `grok-dev` on npm is community-maintained and currently fails at runtime under Node with `Cannot find package "node:diagnostics_channel"`. May work under Bun. The `/ai:setup` wizard does not auto-install for Grok — pick a CLI yourself, install it, and the wizard will probe for the `grok` binary (or whatever you set in `$GROK_BIN`). |
+| Upstream `openai/codex-plugin-cc` (Codex) | See the upstream's `package.json` engines field. Installed for you by `/ai:codex-update`. |
 
 ---
 
