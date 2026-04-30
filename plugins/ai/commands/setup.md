@@ -42,7 +42,7 @@ If `loggedIn: false`, use `AskUserQuestion` (single choice) to pick the auth met
   - **"Skip — I'll authenticate later"** — leaves the provider enabled but not ready.
 
 Auth-path actions:
-- **OAuth (Google account)**: run `gemini auth login` (or `gemini login`, depending on the installed CLI version) via Bash. The CLI will print a URL or open a browser; tell the user to complete the flow there. The Bash subprocess blocks until the login completes — that's expected. Re-run verify after it returns.
+- **OAuth (Google account)**: run `gemini auth login` via Bash. The CLI will print a URL or open a browser; tell the user to complete the flow there. The Bash subprocess blocks until the login completes — that's expected. Re-run verify after it returns. (Note: `gemini auth login` is the developer-CLI auth subcommand, distinct from the web app's sign-in at gemini.google.com.)
 - **API key**: ask for the key with `AskUserQuestion` (single text answer, treat the response as sensitive — do not echo). Tell the user to `export GEMINI_API_KEY=…` for the current session. Only modify their shell config (~/.zshrc, ~/.bashrc) if they explicitly request persistence.
 - **Vertex**: instruct them to run `gcloud auth application-default login` in another terminal, come back, and acknowledge.
 - Re-run `verify --provider=gemini --json` after each path completes.
