@@ -19,30 +19,30 @@ Claude Code plugins that delegate to external AI CLIs — Codex, Gemini, and Gro
 
 You need Node `>=20.0.0` and a [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) install.
 
-### Just one provider
+### From the marketplace (recommended)
 
-Install the plugin you want from the marketplace bundled here:
+Inside Claude Code, point at this repo's marketplace and install whichever plugin you want:
 
-```sh
-# inside Claude Code:
-/plugins
-# pick "gemini", "grok", or "ai" from this marketplace
+```
+/plugins marketplace add dysfunc/ai-plugins-cc
+/plugins install gemini@ai-plugins-cc      # or grok, or ai
 ```
 
-Or install directly from disk during development:
+Pick `ai` if you want the umbrella with cross-provider commands; pick a single provider if you want to keep things minimal.
+
+### From source (development)
 
 ```sh
-git clone https://github.com/<your-handle>/ai-plugins-cc.git
+git clone https://github.com/dysfunc/ai-plugins-cc.git
 cd ai-plugins-cc
 npm install
-# then point Claude Code at this directory's .claude-plugin/marketplace.json
 ```
 
-### All providers + the umbrella
+Then point Claude Code at this directory's `.claude-plugin/marketplace.json`.
 
-Install `ai` from the marketplace. It declares `@ai-plugins-cc/gemini`, `@ai-plugins-cc/grok`, and `@ai-plugins-cc/codex-adapter` as dependencies, so they come with it.
+### Codex setup
 
-Codex is **not** listed in the marketplace. The umbrella's `/ai:codex-update` command installs upstream `openai/codex-plugin-cc` from GitHub into a managed cache directory. Run it once before you use `/ai:review --provider=codex`:
+Codex is **not** listed in the marketplace — it's an OpenAI plugin we don't vendor. The umbrella's `/ai:codex-update` command installs upstream `openai/codex-plugin-cc` from GitHub into a managed cache directory. Run it once before you use `/ai:review --provider=codex`:
 
 ```
 /ai:codex-update
@@ -158,7 +158,7 @@ ai-plugins-cc/
 ### Setup
 
 ```sh
-git clone https://github.com/<your-handle>/ai-plugins-cc.git
+git clone https://github.com/dysfunc/ai-plugins-cc.git
 cd ai-plugins-cc
 npm install
 ```
@@ -217,6 +217,36 @@ npm run changeset:publish    # publish to npm
 Provider plugins depend on `@ai-plugins-cc/core` via plain semver (`*`); npm's workspace resolver wires them up locally and the published packages float against caret ranges. **Any PR that touches `packages/core/**` must include a changeset entry that references `@ai-plugins-cc/core`** — `scripts/check-core-changeset.mjs` enforces this in CI.
 
 The release workflow in `.github/workflows/ci.yml` runs Changesets' release action on `main`: it either opens a "Version Packages" PR consuming pending changesets, or publishes when that PR merges.
+
+### Publishing to npm
+
+Packages live under the `@ai-plugins-cc` scope and ship publicly. First-time setup:
+
+1. Register the `@ai-plugins-cc` scope on npm (one-time, free): https://www.npmjs.com/org/create
+2. Locally: `npm login` with the account that owns the org.
+3. In CI: add `NPM_TOKEN` as a repo secret. The release job in `.github/workflows/ci.yml` already references it.
+
+Each publishable `package.json` has `"publishConfig": { "access": "public" }` so the first publish doesn't fail with "402 Payment Required" (the default for scoped packages is `restricted`).
+
+To publish manually from a clean working tree:
+
+```sh
+npm run changeset            # create entries describing what changed
+npm run changeset:version    # bump versions + write CHANGELOGs
+git commit -am "chore: release"
+npm run changeset:publish    # publishes every package whose version was bumped
+```
+
+The five publishable packages:
+
+- `@ai-plugins-cc/core`
+- `@ai-plugins-cc/shared-prompts`
+- `@ai-plugins-cc/codex-adapter`
+- `@ai-plugins-cc/gemini`
+- `@ai-plugins-cc/grok`
+- `@ai-plugins-cc/ai`
+
+The root `@ai-plugins-cc/monorepo` package stays `private: true` and never publishes.
 
 ---
 

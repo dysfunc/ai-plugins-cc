@@ -5,6 +5,16 @@
   "type": "module",
   "description": "Use Gemini from Claude Code to review code or delegate tasks.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dysfunc/ai-plugins-cc.git",
+    "directory": "plugins/gemini"
+  },
+  "homepage": "https://github.com/dysfunc/ai-plugins-cc#readme",
+  "bugs": "https://github.com/dysfunc/ai-plugins-cc/issues",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=20.0.0"
   },

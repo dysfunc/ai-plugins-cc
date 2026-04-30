@@ -5,6 +5,12 @@
   "type": "module",
   "description": "Monorepo for ai-plugins-cc: shared core, provider plugins (gemini, grok), codex adapter to upstream, and ai umbrella plugin.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dysfunc/ai-plugins-cc.git"
+  },
+  "homepage": "https://github.com/dysfunc/ai-plugins-cc#readme",
+  "bugs": "https://github.com/dysfunc/ai-plugins-cc/issues",
   "engines": {
     "node": ">=20.0.0"
   },

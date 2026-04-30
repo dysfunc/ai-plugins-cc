@@ -5,6 +5,16 @@
   "type": "module",
   "description": "Canonical prompt templates and review-output schema shared across ai-plugins-cc providers.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dysfunc/ai-plugins-cc.git",
+    "directory": "packages/shared-prompts"
+  },
+  "homepage": "https://github.com/dysfunc/ai-plugins-cc#readme",
+  "bugs": "https://github.com/dysfunc/ai-plugins-cc/issues",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=20.0.0"
   },
