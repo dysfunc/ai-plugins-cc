@@ -18,7 +18,8 @@
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "changeset:publish": "changeset publish",
-    "core:check-changeset": "node scripts/check-core-changeset.mjs"
+    "core:check-changeset": "node scripts/check-core-changeset.mjs",
+    "codex:canary": "node scripts/codex-canary.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",

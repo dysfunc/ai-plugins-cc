@@ -1,0 +1,123 @@
+name: Codex Canary
+
+on:
+  schedule:
+    # Daily at 06:00 UTC (early morning US, late afternoon Asia).
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "pinned (default) or latest — latest probes the newest GitHub release"
+        required: false
+        default: "pinned"
+        type: choice
+        options:
+          - pinned
+          - latest
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  canary:
+    name: Codex contract canary (${{ github.event.inputs.mode || 'pinned' }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install workspaces
+        run: npm install --workspaces --include-workspace-root
+
+      - name: Run canary
+        id: canary
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          MODE="${{ github.event.inputs.mode || 'pinned' }}"
+          if [ "$MODE" = "latest" ]; then
+            node scripts/codex-canary.mjs --mode=latest > canary-output.json 2> canary-stderr.txt
+          else
+            node scripts/codex-canary.mjs > canary-output.json 2> canary-stderr.txt
+          fi
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          {
+            echo "stdout<<__EOF__"
+            cat canary-output.json
+            echo "__EOF__"
+            echo "stderr<<__EOF__"
+            cat canary-stderr.txt
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
+          exit $status
+
+      - name: Open issue on canary failure
+        if: failure()
+        uses: actions/github-script@v7
+        env:
+          MODE: ${{ github.event.inputs.mode || 'pinned' }}
+          STDOUT: ${{ steps.canary.outputs.stdout }}
+          STDERR: ${{ steps.canary.outputs.stderr }}
+        with:
+          script: |
+            const { MODE, STDOUT, STDERR } = process.env;
+            const title = `[codex-canary] drift detected (${MODE})`;
+            const body = [
+              `The codex canary failed on \`${context.sha.slice(0, 7)}\` running in mode \`${MODE}\`.`,
+              ``,
+              `**Workflow run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              ``,
+              `**Stdout:**`,
+              "```json",
+              (STDOUT || "(empty)").trim(),
+              "```",
+              ``,
+              `**Stderr:**`,
+              "```",
+              (STDERR || "(empty)").trim(),
+              "```",
+              ``,
+              `### What this means`,
+              `The canary drives a real install→invoke cycle against \`openai/codex-plugin-cc\`. A failure means one of:`,
+              `- the pinned tag was retagged upstream (SHA mismatch),`,
+              `- the upstream companion script regressed on \`--version\` or \`setup --json\`,`,
+              `- the GitHub release feed changed shape.`,
+              ``,
+              `### Next steps`,
+              `1. Re-read the upstream changelog for the affected tag.`,
+              `2. If upstream is at fault, file with them.`,
+              `3. If our normalizer needs updating, do that and bump \`pinnedTag\`/\`pinnedSha\` in \`packages/codex-adapter/package.json\`.`
+            ].join("\n");
+
+            // Avoid duplicate issues — search for an open one with the same title.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "codex-canary",
+              per_page: 50
+            });
+            const dup = existing.data.find((i) => i.title === title);
+            if (dup) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: dup.number,
+                body
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ["codex-canary"]
+              });
+            }
