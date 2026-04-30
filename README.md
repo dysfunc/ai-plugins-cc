@@ -107,9 +107,48 @@ Workspace and user config files are JSON, e.g.:
 ```jsonc
 {
   "provider": "grok",
+  "enabledProviders": ["gemini", "grok", "codex"],
   "compareProviders": ["gemini", "grok", "codex"]
 }
 ```
+
+---
+
+## First-run setup
+
+After installing the umbrella plugin, run:
+
+```
+/ai:setup
+```
+
+It walks through:
+
+1. **Pick providers.** Multi-select across Gemini, Grok, and Codex.
+2. **Install missing CLIs.** For each pick:
+   - Gemini: `npm install -g @google/gemini-cli` (only with your confirmation).
+   - Grok: `npm install -g grok-dev`.
+   - Codex: downloads the pinned upstream `openai/codex-plugin-cc` release into a managed cache (no vendoring).
+3. **Walk through auth.** API key or SSO per provider; keys are read from env (never echoed back into chat or written to shell config without consent).
+4. **Verify each.** Per-provider probe runs after every change to confirm `ready: true`.
+5. **Save settings.** Writes `~/.claude/ai-plugins-cc.json` with enabled providers, default, and `/ai:compare` set.
+
+Re-run `/ai:setup` at any time to re-verify or change selections; rerun on a fresh machine to bring the new install up to speed.
+
+The first SessionStart on any workspace where settings haven't been written yet emits a one-line nudge: *"ai-plugins-cc: no settings yet — run /ai:setup..."*. The hook never blocks the session.
+
+## Changing settings later
+
+```
+/ai:settings                              # interactive — show + edit
+/ai:settings show                         # current state
+/ai:settings enable codex                 # add codex to active providers
+/ai:settings disable grok                 # remove (rolls default forward if needed)
+/ai:settings set-default gemini           # change /ai:review's provider
+/ai:settings set-compare gemini,codex     # ordered list for /ai:compare fan-out
+```
+
+Every mutation writes `~/.claude/ai-plugins-cc.json` atomically (temp file + rename). Disabling the current default automatically reassigns it to the first remaining enabled provider; the change is visible in the JSON output of every settings command.
 
 ---
 

@@ -8,11 +8,17 @@ Per-provider commands (`/codex:*`, `/gemini:*`, `/grok:*`) keep working from the
 
 | Command | What it does |
 |---|---|
+| `/ai:setup` | First-run wizard: pick providers, install missing CLIs, walk through auth, verify each, save settings. |
+| `/ai:settings` | Show or change which providers are enabled, the default, and the `/ai:compare` set. Interactive when called with no args; subcommands also accepted (`enable <id>`, `disable <id>`, `set-default <id>`, `set-compare <ids>`). |
 | `/ai:review [--provider=ID] [...]` | Review the pending change with the configured provider. |
 | `/ai:rescue [--provider=ID] <prompt>` | Hand a substantial coding task to the configured provider's agent. |
 | `/ai:gater [--provider=ID]` | Run an adversarial review at session-stop time and emit `ALLOW:` / `BLOCK:`. |
 | `/ai:compare [--providers=A,B,C] [...]` | Fan the review out to multiple providers in parallel; render a side-by-side report. |
 | `/ai:codex-update [--tag=vX.Y.Z]` | Install or update the pinned upstream `openai/codex-plugin-cc`. Hash-verifies if a SHA is pinned in the codex-adapter. |
+
+## First-run hook
+
+The umbrella plugin ships a `SessionStart` hook (`scripts/first-run-hook.mjs`) that prints a one-line nudge to stderr if `~/.claude/ai-plugins-cc.json` doesn't exist yet, suggesting `/ai:setup`. It never blocks the session.
 
 ## Provider precedence
 
@@ -36,4 +42,11 @@ The umbrella subprocesses the target provider's companion script and surfaces it
 npm test --workspace=@ai-plugins-cc/ai
 ```
 
-16 tests covering config precedence (CLI → workspace → user → env → default), unknown-provider error messages, in-house dispatch via a fake companion (status capture, stderr surfacing, timeout, uniform shape), compare fan-out (preserves order across mixed success and failure), and codex-update wiring through the adapter.
+32 tests covering:
+
+- **Config precedence** (9): CLI → workspace → user → env → default; unknown-provider error messages.
+- **In-house dispatch** (4): status capture, stderr surfacing, timeout enforcement, uniform shape.
+- **Compare fan-out** (2): preserves order across mixed success and failure.
+- **Codex-update wiring** (1): adapter resolves through the umbrella's dependency tree.
+- **Settings persistence** (10): atomic writes, registry filtering, default-rollover on disable, ordered enable list, unknown-id rejection.
+- **Subcommand integration** (6): `setup --json` shape, `settings show/enable/disable/set-default` round-trip via subprocess, `verify --provider=ID` exit codes.

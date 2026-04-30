@@ -7,19 +7,44 @@ import { installCodexUpstream } from "@ai-plugins-cc/codex-adapter";
 import { dispatchToProvider, dispatchCompare } from "./lib/dispatch.mjs";
 import { resolveProvider, resolveCompareProviders } from "./lib/config.mjs";
 import { renderCompareReport } from "./lib/render-compare.mjs";
+import { listProviders, isProvider } from "./lib/providers.mjs";
+import { probeProvider, probeAllProviders } from "./lib/status.mjs";
+import {
+  defaultUserConfigPath,
+  disableProvider,
+  enableProvider,
+  readSettings,
+  setCompareProviders,
+  setDefaultProvider
+} from "./lib/settings.mjs";
 
-const COMMANDS = new Set(["review", "rescue", "gater", "compare", "codex-update"]);
+const COMMANDS = new Set([
+  "review",
+  "rescue",
+  "gater",
+  "compare",
+  "codex-update",
+  "setup",
+  "verify",
+  "settings"
+]);
 
 function usage(stream = process.stderr) {
   stream.write(
     [
       "Usage: ai-companion.mjs <command> [--provider=ID] [--providers=A,B,C] [--json] [...args]",
-      "Commands: review | rescue | gater | compare | codex-update",
+      "Commands:",
+      "  review | rescue | gater | compare      forward to one or many providers",
+      "  setup [--json]                          aggregate status across providers",
+      "  verify --provider=ID [--json]           probe one provider",
+      "  settings show|enable|disable|...        manage ~/.claude/ai-plugins-cc.json",
+      "  codex-update [--tag=vX.Y.Z]             install pinned upstream codex",
       "Examples:",
       "  ai-companion.mjs review --provider=gemini --scope=diff",
       "  ai-companion.mjs compare --providers=gemini,codex --scope=diff",
-      "  ai-companion.mjs codex-update             # install pinned upstream codex",
-      "  ai-companion.mjs codex-update --tag=v1.0.5 # override the pinned tag",
+      "  ai-companion.mjs setup --json",
+      "  ai-companion.mjs verify --provider=gemini --json",
+      "  ai-companion.mjs settings enable codex",
       ""
     ].join("\n")
   );
@@ -137,6 +162,140 @@ async function runCodexUpdate(argv) {
   }
 }
 
+async function runSetup(argv) {
+  const json = argv.includes("--json");
+  const providers = await probeAllProviders();
+  const settings = readSettings();
+  const payload = {
+    providers,
+    settings,
+    settingsFile: defaultUserConfigPath(),
+    knownProviders: listProviders()
+  };
+
+  if (json) {
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+  } else {
+    const lines = ["# /ai:setup status", ""];
+    for (const id of payload.knownProviders) {
+      const p = providers[id];
+      const enabled = settings.enabledProviders.includes(id) ? "enabled" : "disabled";
+      const tag = settings.provider === id ? " [default]" : "";
+      lines.push(`- ${id}${tag} (${enabled}): ${p.detail}`);
+    }
+    lines.push("");
+    lines.push(`Settings file: ${payload.settingsFile}`);
+    process.stdout.write(`${lines.join("\n")}\n`);
+  }
+  // Setup is non-fatal: a not-ready provider is information, not error.
+  process.exit(0);
+}
+
+async function runVerify(argv) {
+  let providerId = null;
+  let json = false;
+  for (const arg of argv.slice(1)) {
+    if (arg.startsWith("--provider=")) providerId = arg.slice("--provider=".length);
+    else if (arg === "--json") json = true;
+  }
+  if (!providerId || !isProvider(providerId)) {
+    const message = `verify requires --provider=<one of: ${listProviders().join(", ")}>`;
+    if (json) process.stdout.write(`${JSON.stringify({ ok: false, error: message }, null, 2)}\n`);
+    else process.stderr.write(`${message}\n`);
+    process.exit(2);
+  }
+
+  const result = await probeProvider(providerId);
+  if (json) {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  } else {
+    process.stdout.write(`${providerId}: ${result.ready ? "ready" : "needs attention"} — ${result.detail}\n`);
+  }
+  process.exit(result.ready ? 0 : 1);
+}
+
+function runSettings(argv) {
+  const sub = argv[1];
+  const arg = argv[2];
+  const rest = argv.slice(2);
+  const json = rest.includes("--json");
+
+  function emit(out) {
+    if (json) process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
+    else if (out.message) process.stdout.write(`${out.message}\n`);
+    else process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
+  }
+
+  try {
+    if (!sub || sub === "show") {
+      const settings = readSettings();
+      emit({ ok: true, settings, settingsFile: defaultUserConfigPath() });
+      process.exit(0);
+    }
+    if (sub === "enable") {
+      const { settings, filePath } = enableProvider(arg);
+      emit({
+        ok: true,
+        action: "enable",
+        provider: arg,
+        settings,
+        settingsFile: filePath,
+        message: `Enabled ${arg}. Active providers: ${settings.enabledProviders.join(", ") || "(none)"}`
+      });
+      process.exit(0);
+    }
+    if (sub === "disable") {
+      const { settings, filePath } = disableProvider(arg);
+      emit({
+        ok: true,
+        action: "disable",
+        provider: arg,
+        settings,
+        settingsFile: filePath,
+        message: `Disabled ${arg}. Active providers: ${settings.enabledProviders.join(", ") || "(none)"}`
+      });
+      process.exit(0);
+    }
+    if (sub === "set-default") {
+      const { settings, filePath } = setDefaultProvider(arg);
+      emit({
+        ok: true,
+        action: "set-default",
+        provider: arg,
+        settings,
+        settingsFile: filePath,
+        message: `Default provider is now ${arg}.`
+      });
+      process.exit(0);
+    }
+    if (sub === "set-compare") {
+      const ids = (arg ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+      const { settings, filePath } = setCompareProviders(ids);
+      emit({
+        ok: true,
+        action: "set-compare",
+        providers: ids,
+        settings,
+        settingsFile: filePath,
+        message: `/ai:compare will fan out to: ${ids.join(", ") || "(default — all registered providers)"}`
+      });
+      process.exit(0);
+    }
+    process.stderr.write(`settings: unknown subcommand "${sub}"\n`);
+    process.stderr.write(
+      "  show | enable <id> | disable <id> | set-default <id> | set-compare <id,id,...>\n"
+    );
+    process.exit(2);
+  } catch (err) {
+    if (json) {
+      process.stdout.write(`${JSON.stringify({ ok: false, error: err?.message ?? String(err) }, null, 2)}\n`);
+    } else {
+      process.stderr.write(`${err?.message ?? err}\n`);
+    }
+    process.exit(1);
+  }
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
@@ -151,6 +310,9 @@ async function main() {
   }
 
   if (command === "codex-update") return runCodexUpdate(argv);
+  if (command === "setup") return runSetup(argv);
+  if (command === "verify") return runVerify(argv);
+  if (command === "settings") return runSettings(argv);
 
   const parsed = parseUmbrellaArgs(argv);
   if (command === "compare") return runCompare(parsed);
