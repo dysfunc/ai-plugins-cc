@@ -98,7 +98,7 @@ export async function interruptGrokTurn(_cwd, _params) {
 export async function runGrokTurn(cwd, options = {}) {
   const availability = getGrokAvailability(cwd);
   if (!availability.available) {
-    throw new Error("Grok CLI is not installed. Install it with `npm install -g grok-dev`, then rerun `/grok:setup`.");
+    throw new Error("Grok CLI is not installed. Install it with `npm install -g @vibe-kit/grok-cli`, then rerun `/grok:setup`.");
   }
 
   const prompt = options.prompt?.trim() || options.defaultPrompt || "";

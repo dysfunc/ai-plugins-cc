@@ -19,7 +19,7 @@ If the result says the Grok CLI is unavailable and npm is available:
 - If the user chooses install, run:
 
 ```bash
-npm install -g grok-dev
+npm install -g @vibe-kit/grok-cli
 ```
 
 - Then rerun:

@@ -69,7 +69,7 @@ This monorepo's own packages need Node `>=20.0.0`. The **provider CLIs we drive*
 | CLI | Notes |
 |---|---|
 | `@google/gemini-cli` (Gemini) | Node 20+; recent versions track current LTS. Auto-installed by `/ai:setup`. |
-| Grok | **No official xAI CLI we can confidently auto-install.** `grok-dev` on npm is community-maintained and currently fails at runtime under Node with `Cannot find package "node:diagnostics_channel"`. May work under Bun. The `/ai:setup` wizard does not auto-install for Grok — pick a CLI yourself, install it, and the wizard will probe for the `grok` binary (or whatever you set in `$GROK_BIN`). |
+| Grok | `@vibe-kit/grok-cli` — Node 18+, ESM, installs the `grok` binary. Auto-installed by `/ai:setup`. Avoid the older `grok-dev` package: it's Bun-targeted and fails under plain Node with `Cannot find package "node:diagnostics_channel"`. |
 | Upstream `openai/codex-plugin-cc` (Codex) | See the upstream's `package.json` engines field. Installed for you by `/ai:codex-update`. |
 
 ---
@@ -137,7 +137,7 @@ It walks through:
 1. **Pick providers.** Multi-select across Gemini, Grok, and Codex.
 2. **Install missing CLIs.** For each pick:
    - Gemini: `npm install -g @google/gemini-cli` (only with your confirmation).
-   - Grok: `npm install -g grok-dev`.
+   - Grok: `npm install -g @vibe-kit/grok-cli` (Node-compatible; the older `grok-dev` package is Bun-targeted and fails under Node).
    - Codex: downloads the pinned upstream `openai/codex-plugin-cc` release into a managed cache (no vendoring).
 3. **Walk through auth.** API key or SSO per provider; keys are read from env (never echoed back into chat or written to shell config without consent).
 4. **Verify each.** Per-provider probe runs after every change to confirm `ready: true`.

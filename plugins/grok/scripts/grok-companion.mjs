@@ -182,7 +182,7 @@ async function buildSetupReport(cwd, actionsTaken = []) {
 
   const nextSteps = [];
   if (!grokStatus.available) {
-    nextSteps.push("Install the Grok CLI with `npm install -g grok-dev`.");
+    nextSteps.push("Install the Grok CLI with `npm install -g @vibe-kit/grok-cli`.");
   }
   if (grokStatus.available && !authStatus.loggedIn) {
     nextSteps.push("Set `GROK_API_KEY` (or `XAI_API_KEY`) with a key from https://console.x.ai.");
@@ -247,7 +247,7 @@ function buildReviewPrompt(reviewName, context, focusText) {
 function ensureGrokAvailable(cwd) {
   const availability = getGrokAvailability(cwd);
   if (!availability.available) {
-    throw new Error("Grok CLI is not installed. Install it with `npm install -g grok-dev`, then rerun `/grok:setup`.");
+    throw new Error("Grok CLI is not installed. Install it with `npm install -g @vibe-kit/grok-cli`, then rerun `/grok:setup`.");
   }
 }
 

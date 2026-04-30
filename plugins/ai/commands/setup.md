@@ -49,18 +49,17 @@ Auth-path actions:
 
 ### Grok
 
-The Grok CLI ecosystem isn't standardized — there's no single official xAI CLI we can confidently auto-install today. **Don't run any `npm install` command for Grok.** Instead:
+Same shape — the user already opted in by selecting Grok, so install without re-asking.
 
 If `available: false`:
-1. Tell the user: *"The Grok CLI ecosystem isn't standardized — I won't auto-install. Install a CLI yourself, then come back."*
-2. Surface a few options (don't pick one for them; let them decide which fits their setup):
-   - `npm install -g grok-dev` — community CLI; reported to fail on Node with `Cannot find package "node:diagnostics_channel"`. May work under Bun (`bun install -g grok-dev` or `bunx grok-dev`).
-   - Any other Grok-compatible CLI they prefer.
-3. Use `AskUserQuestion` (single choice): *I'll install it now (wait for me)* / *Skip Grok for now*. Default to **Skip Grok**.
-4. If they pick "wait for me": pause, then once they confirm install is done, re-run `verify --provider=grok --json`. If the binary they installed is named something other than `grok`, tell them they can set `GROK_BIN=<name>` in their environment to point our adapter at it.
+- Tell them once: *"Installing Grok CLI (`npm install -g @vibe-kit/grok-cli`)…"*
+- Run `npm install -g @vibe-kit/grok-cli` via Bash. This is a Node-compatible CLI (ESM with Ink for terminal UI). The binary it installs is `grok`.
+- **Avoid `grok-dev`**: that's a separate, Bun-targeted package that fails under plain Node with `Cannot find package "node:diagnostics_channel"`. If a previous install left `grok-dev` on PATH, suggest `npm uninstall -g grok-dev` first.
+- Surface install failures verbatim and stop this provider's flow on a non-zero exit.
+- Re-run `verify --provider=grok --json`.
 
-If `loggedIn: false` (regardless of how they got the CLI installed):
-- The Grok CLIs we know about are **API key only** (no SSO/OAuth flow).
+If `loggedIn: false`:
+- The Grok CLI is **API key only** (no SSO/OAuth flow today).
 - Ask whether to set `GROK_API_KEY` or `XAI_API_KEY` (point at https://console.x.ai). Same paste-an-API-key flow as Gemini's API-key path.
 - Re-run `verify --provider=grok --json`.
 

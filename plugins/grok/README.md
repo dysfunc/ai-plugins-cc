@@ -1,6 +1,6 @@
 # @ai-plugins-cc/grok
 
-Claude Code plugin that delegates to the [xAI Grok CLI](https://github.com/superagent-ai/grok-cli).
+Claude Code plugin that delegates to a Grok CLI. The supported package is [`@vibe-kit/grok-cli`](https://www.npmjs.com/package/@vibe-kit/grok-cli) — a Node-compatible CLI that installs the `grok` binary. Use a different binary by setting `GROK_BIN`.
 
 Runs on `@ai-plugins-cc/core`. Sibling of `@ai-plugins-cc/gemini`. Maintained here until an official `grok-plugin-cc` ships from xAI; at cutover this plugin will be replaced by a thin `@ai-plugins-cc/grok-adapter` (analogous to `@ai-plugins-cc/codex-adapter`) and deprecated.
 
