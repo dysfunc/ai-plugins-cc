@@ -2,20 +2,24 @@
 
 import process from "node:process";
 
+import { installCodexUpstream } from "@ai-plugins-cc/codex-adapter";
+
 import { dispatchToProvider, dispatchCompare } from "./lib/dispatch.mjs";
 import { resolveProvider, resolveCompareProviders } from "./lib/config.mjs";
 import { renderCompareReport } from "./lib/render-compare.mjs";
 
-const COMMANDS = new Set(["review", "rescue", "gater", "compare"]);
+const COMMANDS = new Set(["review", "rescue", "gater", "compare", "codex-update"]);
 
 function usage(stream = process.stderr) {
   stream.write(
     [
       "Usage: ai-companion.mjs <command> [--provider=ID] [--providers=A,B,C] [--json] [...args]",
-      "Commands: review | rescue | gater | compare",
+      "Commands: review | rescue | gater | compare | codex-update",
       "Examples:",
       "  ai-companion.mjs review --provider=gemini --scope=diff",
       "  ai-companion.mjs compare --providers=gemini,codex --scope=diff",
+      "  ai-companion.mjs codex-update             # install pinned upstream codex",
+      "  ai-companion.mjs codex-update --tag=v1.0.5 # override the pinned tag",
       ""
     ].join("\n")
   );
@@ -95,6 +99,44 @@ async function runCompare(parsed) {
   process.exit(anyOk ? 0 : 1);
 }
 
+async function runCodexUpdate(argv) {
+  let tag = null;
+  let into = null;
+  let json = false;
+  for (const arg of argv.slice(1)) {
+    if (arg.startsWith("--tag=")) tag = arg.slice("--tag=".length);
+    else if (arg.startsWith("--into=")) into = arg.slice("--into=".length);
+    else if (arg === "--json") json = true;
+  }
+
+  try {
+    const result = await installCodexUpstream({
+      tag: tag ?? undefined,
+      into: into ?? undefined
+    });
+    if (json) {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    } else {
+      process.stdout.write(
+        `Installed openai/codex-plugin-cc ${result.tag} ` +
+          `(version ${result.version ?? "unknown"}) into ${result.root}\n` +
+          `SHA-256: ${result.sha}\n` +
+          (result.replaced ? "Replaced an existing install.\n" : "")
+      );
+    }
+    process.exit(0);
+  } catch (err) {
+    if (json) {
+      process.stdout.write(
+        `${JSON.stringify({ ok: false, error: err?.message ?? String(err) }, null, 2)}\n`
+      );
+    } else {
+      process.stderr.write(`${err?.message ?? err}\n`);
+    }
+    process.exit(1);
+  }
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
@@ -107,6 +149,8 @@ async function main() {
     process.stderr.write(`\nUnknown command: ${command}\n`);
     process.exit(2);
   }
+
+  if (command === "codex-update") return runCodexUpdate(argv);
 
   const parsed = parseUmbrellaArgs(argv);
   if (command === "compare") return runCompare(parsed);

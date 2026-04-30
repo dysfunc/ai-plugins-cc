@@ -12,6 +12,7 @@
   "exports": {
     ".": "./src/index.mjs",
     "./discover": "./src/discover.mjs",
+    "./install": "./src/install.mjs",
     "./invoke": "./src/invoke.mjs",
     "./normalize": "./src/normalize.mjs"
   },
@@ -25,7 +26,8 @@
   "ai-plugins-cc": {
     "upstream": {
       "repo": "openai/codex-plugin-cc",
-      "pinnedTag": null,
+      "pinnedTag": "v1.0.4",
+      "_pinnedShaComment": "Pin a SHA-256 of the GitHub tarball here for hash-verified installs. Leave null to install without verification (acceptable for development; production should pin).",
       "pinnedSha": null
     }
   }
