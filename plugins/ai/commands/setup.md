@@ -49,8 +49,18 @@ Auth-path actions:
 
 ### Grok
 
-Same shape — the user already opted in by selecting Grok, so install without re-asking:
-- Missing CLI → run `npm install -g grok-dev`. Surface install failures verbatim.
+Same shape — the user already opted in by selecting Grok, so install without re-asking. **But check Node version first.** `grok-dev` and several of its transitive dependencies require Node ≥20.17; older Node will install but fail at runtime with `Cannot find package "node:diagnostics_channel"` or similar.
+
+Pre-flight (only when `available: false`):
+
+1. Run `node --version` via Bash. Parse the major.minor.patch.
+2. If the version is **below 20.17.0**, do NOT attempt the install. Tell the user:
+   *"The Grok CLI requires Node ≥20.17. You're on `<version>`. Install a newer Node (e.g. `nvm install 22 && nvm use 22`) and re-run `/ai:setup`."*
+3. Use `AskUserQuestion` (single choice: *Skip Grok* / *Install anyway*). Default to **Skip Grok**.
+4. Only proceed to `npm install -g grok-dev` if they pick "Install anyway".
+
+Then:
+- Missing CLI (after pre-flight) → run `npm install -g grok-dev`. Surface install failures verbatim.
 - Missing auth → as far as we know, the official Grok CLI is **API key only** (no SSO/OAuth flow). Ask whether to set `GROK_API_KEY` or `XAI_API_KEY` (point at https://console.x.ai). Same paste-an-API-key flow as Gemini's API-key path.
 - Re-run `verify --provider=grok --json`.
 

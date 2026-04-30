@@ -54,13 +54,25 @@ This downloads the SHA-pinned upstream release, hash-verifies the tarball, and a
 
 ## Provider authentication
 
-| Provider | Required env var | Fallback | Where to get a key |
+| Provider | Required env var | Fallback / SSO | Where to get a key |
 |---|---|---|---|
-| Gemini | `GEMINI_API_KEY` | `GOOGLE_API_KEY`, or `gcloud auth application-default login` for Vertex AI | https://aistudio.google.com/ |
+| Gemini | `GEMINI_API_KEY` | `GOOGLE_API_KEY` · interactive `gemini auth login` (Google account) · `gcloud auth application-default login` (Vertex AI) | https://aistudio.google.com/ |
 | Grok | `GROK_API_KEY` | `XAI_API_KEY` | https://console.x.ai/ |
 | Codex | `OPENAI_API_KEY` | `CODEX_API_KEY` | https://platform.openai.com/ |
 
 Each provider's `setup` command (`/gemini:setup`, `/grok:setup`, etc.) reports which credential is found and whether the underlying CLI is on `PATH`.
+
+### Node version requirements
+
+This monorepo's own packages need Node `>=20.0.0`, but the **provider CLIs we drive** have their own minimums:
+
+| CLI | Node minimum | Notes |
+|---|---|---|
+| `@google/gemini-cli` (Gemini) | Node 20+ | Recent versions track current LTS. |
+| `grok-dev` (Grok) | **Node ≥20.17** | Several transitive deps want `node:diagnostics_channel`, which lands in 20.17. Older Node installs successfully but fails at runtime with `Cannot find package "node:diagnostics_channel"`. |
+| Upstream `openai/codex-plugin-cc` (Codex) | See its `package.json` engines field for the pinned tag. | Read after `/ai:codex-update`. |
+
+If you're on `nvm`, the simplest fix is `nvm install 22 && nvm use 22` before running `/ai:setup`. The `/ai:setup` wizard pre-flights Node version for Grok specifically and offers to skip the install when the runtime would fail.
 
 ---
 
