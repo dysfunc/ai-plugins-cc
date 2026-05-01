@@ -69,7 +69,7 @@ This monorepo's own packages need Node `>=20.0.0`. The **provider CLIs we drive*
 | CLI | Notes |
 |---|---|
 | `@google/gemini-cli` (Gemini) | Node 20+; recent versions track current LTS. Auto-installed by `/ai:setup`. |
-| Grok | `@vibe-kit/grok-cli` — Node 18+, ESM, installs the `grok` binary. Auto-installed by `/ai:setup`. Avoid the older `grok-dev` package: it's Bun-targeted and fails under plain Node with `Cannot find package "node:diagnostics_channel"`. |
+| Grok | `@vibe-kit/grok-cli` — Node 18+, ESM, installs the `grok` binary. Auto-installed by `/ai:setup`. Avoid the older `grok-dev` package: it's Bun-targeted and fails under plain Node with `Cannot find package "node:diagnostics_channel"`. `/ai:setup` also applies an idempotent in-place patch (`scripts/patch-grok-cli.mjs`) that strips a deprecated `search_parameters` field the bundled `client.js` sends on every chat call — without it, xAI returns `410 "Live search is deprecated"` for accounts without a Live Search license. The patch must be re-applied after every `npm install -g @vibe-kit/grok-cli` upgrade; re-running `/ai:setup` does that. |
 | Upstream `openai/codex-plugin-cc` (Codex) | See the upstream's `package.json` engines field. Installed for you by `/ai:codex-update`. |
 
 ---
@@ -96,11 +96,11 @@ Every plugin exposes the same surface, scoped to its prefix:
 /ai:review [--provider=gemini|grok|codex] [--scope=...] [focus]
 /ai:rescue [--provider=...] <prompt>
 /ai:gater  [--provider=...]
-/ai:compare [--providers=A,B,C] [--scope=...] [focus]
+/ai:compare [--providers=A,B,C] [--action=review|rescue|gater] [--scope=...] [focus]
 /ai:codex-update [--tag=vX.Y.Z]
 ```
 
-`/ai:compare` fans the review out to every configured provider in parallel and returns a single markdown report with one fenced section per provider. A single provider's failure is shown in its section but doesn't abort the others.
+`/ai:compare` fans the review out to every configured provider in parallel and returns a single markdown report with one fenced section per provider. A single provider's failure is shown in its section but doesn't abort the others. `--action=` switches the fanned-out verb (default `review`); use `--action=rescue` to ask every provider the same investigation/coding task.
 
 ### Provider precedence
 
