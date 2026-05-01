@@ -17,7 +17,7 @@
         "name": "Kieran Boyle",
         "url": "https://github.com/dysfunc"
       },
-      "source": "./plugins/gemini"
+      "source": "./dist/plugins/gemini"
     },
     {
       "name": "grok",
@@ -27,7 +27,7 @@
         "name": "Kieran Boyle",
         "url": "https://github.com/dysfunc"
       },
-      "source": "./plugins/grok"
+      "source": "./dist/plugins/grok"
     },
     {
       "name": "ai",
@@ -37,7 +37,7 @@
         "name": "Kieran Boyle",
         "url": "https://github.com/dysfunc"
       },
-      "source": "./plugins/ai"
+      "source": "./dist/plugins/ai"
     }
   ]
 }

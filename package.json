@@ -21,6 +21,7 @@
   "scripts": {
     "test": "npm test --workspaces --if-present",
     "lint": "echo 'lint not configured yet'",
+    "build:plugins": "node scripts/build-plugins.mjs",
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "changeset:publish": "changeset publish",
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.0"
   }
 }

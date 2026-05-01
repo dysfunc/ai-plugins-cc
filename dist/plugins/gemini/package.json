@@ -1,14 +1,14 @@
 {
-  "name": "@ai-plugins-cc/ai",
+  "name": "@ai-plugins-cc/gemini",
   "version": "0.1.0",
   "private": false,
   "type": "module",
-  "description": "Umbrella Claude Code plugin: dispatches /ai:review|rescue|gater across codex, gemini, grok and adds /ai:compare for fan-out.",
+  "description": "Use Gemini from Claude Code to review code or delegate tasks.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dysfunc/ai-plugins-cc.git",
-    "directory": "plugins/ai"
+    "directory": "plugins/gemini"
   },
   "homepage": "https://github.com/dysfunc/ai-plugins-cc#readme",
   "bugs": "https://github.com/dysfunc/ai-plugins-cc/issues",
@@ -18,9 +18,11 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "exports": {
+    "./meta": "./scripts/meta.mjs"
+  },
   "dependencies": {
     "@ai-plugins-cc/core": "*",
-    "@ai-plugins-cc/codex-adapter": "*",
     "@ai-plugins-cc/shared-prompts": "*"
   },
   "scripts": {

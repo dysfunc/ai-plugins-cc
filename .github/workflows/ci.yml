@@ -31,6 +31,15 @@ jobs:
       - name: Test all workspaces
         run: npm test --workspaces --if-present
 
+      - name: Verify dist/ is up to date with sources
+        run: |
+          npm run build:plugins
+          if ! git diff --quiet -- dist; then
+            echo "::error::dist/ is out of date. Run \`npm run build:plugins\` locally and commit the changes."
+            git diff --stat -- dist
+            exit 1
+          fi
+
   changeset-enforcement:
     name: Core changeset enforcement
     runs-on: ubuntu-latest

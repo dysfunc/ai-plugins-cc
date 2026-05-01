@@ -36,7 +36,15 @@ jspm_packages/
 
 # Build outputs
 build/Release
-dist/
+# Use `dist/*` (not `dist/`) so we can re-include dist/plugins/ below — git
+# stops descending into a directory once its name is excluded by a parent
+# pattern, and `dist/` would block the negation.
+dist/*
+# dist/plugins/ is the bundled plugin tree consumed by the Claude Code
+# marketplace; it must be committed so `/plugin marketplace add` users get
+# the self-contained build.
+!dist/plugins/
+!dist/plugins/**
 output/
 
 # OS
