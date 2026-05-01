@@ -21,14 +21,31 @@ You need Node `>=20.0.0` and a [Claude Code](https://docs.claude.com/en/docs/cla
 
 ### From the marketplace (recommended)
 
-Inside Claude Code, point at this repo's marketplace and install whichever plugin you want:
+Add the marketplace in Claude Code:
 
 ```
-/plugins marketplace add dysfunc/ai-plugins-cc
-/plugins install gemini@ai-plugins-cc      # or grok, or ai
+/plugin marketplace add dysfunc/ai-plugins-cc
 ```
 
-Pick `ai` if you want the umbrella with cross-provider commands; pick a single provider if you want to keep things minimal.
+Install the plugin you want (`ai` for the umbrella with cross-provider commands; `gemini` or `grok` for a single provider):
+
+```
+/plugin install ai@ai-plugins-cc      # or gemini, or grok
+```
+
+Reload plugins:
+
+```
+/reload-plugins
+```
+
+Then run:
+
+```
+/ai:setup
+```
+
+`/ai:setup` walks you through picking which providers to enable, installs each provider's CLI for you, captures auth, and persists your defaults. You can re-run it any time, or use `/ai:settings` to change individual providers later.
 
 ### From source (development)
 
