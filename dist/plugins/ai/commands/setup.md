@@ -21,6 +21,8 @@ Use `AskUserQuestion` once with `multiSelect: true`. Options are the entries in 
 
 > Which AI providers do you want to enable? Pick any combination — you can change this later with `/ai:settings`.
 
+Append `(Recommended)` to **every** option that has a viable default auth path on the local machine — that's all three of `gemini`, `grok`, and `codex`. They each install in seconds and have a clear default credential (Google API key / OAuth, xAI API key, ChatGPT login). Don't single one out as "the" recommendation — the umbrella works best with all three, and the user is the only one who knows which providers they pay for.
+
 For each selected provider, follow the matching block below. Run them in the order the user picked.
 
 ## Step 2: per-provider walk-through
