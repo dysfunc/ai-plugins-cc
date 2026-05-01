@@ -7,9 +7,20 @@ You are walking the user through first-time setup of `@ai-plugins-cc/ai`. Be eff
 
 ## Step 0: read current state
 
+Before running the bash probe, create a task so the user sees a friendly progress spinner instead of a blank "thinking" pause:
+
+```
+TaskCreate(subject="Probe AI providers", activeForm="Probing AI providers")
+TaskUpdate(taskId=<id>, status="in_progress")
+```
+
+Then run:
+
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/ai-companion.mjs" setup
 ```
+
+Mark the task `completed` once the bash returns. Use the same TaskCreate pattern for any other long-running probe step (CLI installs, codex-update). Keep `activeForm` short and concrete — it shows in the spinner area as the user waits.
 
 The non-JSON form prints a 5-7 line human-readable summary, one line per provider. Format: `- <id> [<tags>] (enabled|disabled): <detail>`. The `<detail>` field is one of:
 - `ready` — provider is fully set up
