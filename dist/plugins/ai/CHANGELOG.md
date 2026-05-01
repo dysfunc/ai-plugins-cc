@@ -1,5 +1,15 @@
 # @ai-plugins-cc/ai
 
+## 0.2.1
+
+### Patch Changes
+
+- `@ai-plugins-cc/ai` polish round since `0.2.0`.
+
+  - `resolveSiblingCompanionPath` now walks up from the running module looking for `.claude-plugin/plugin.json` to anchor the umbrella's root. Previously it relied on `path.resolve(HERE, "..", "..")`, which silently went one directory too high once esbuild bundled `providers.mjs` into `scripts/ai-companion.mjs` (HERE became `<root>/scripts` instead of `<root>/scripts/lib`). The bug only surfaced when `CLAUDE_PLUGIN_ROOT` wasn't exported into the subprocess env — slash commands substitute the path into the bash command but don't always export the env var — and produced a "sibling plugin missing" error even though the bundled fallback was sitting right there on disk.
+  - `/ai:setup` now uses the non-JSON form of `setup` for its initial probe (5–7 lines of `- <id> [<tags>] (enabled): <detail>`). The full `setup --json` dump (~100 lines) is reserved for cases where the wizard genuinely needs structured fields, and `verify --provider=<id> --json` is the recommended way to drill into a single provider.
+  - `/ai:setup` wraps long-running probe steps in `TaskCreate` so the user sees a "Probing AI providers..." spinner instead of a blank "thinking" pause. The bash tool cards themselves still render (that's Claude Code UI, not something the plugin can suppress), but the surrounding context reads as a guided wizard rather than a debug session.
+
 ## 0.2.0
 
 ### Minor Changes
