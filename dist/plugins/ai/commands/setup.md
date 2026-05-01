@@ -8,12 +8,19 @@ You are walking the user through first-time setup of `@ai-plugins-cc/ai`. Be eff
 ## Step 0: read current state
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/ai-companion.mjs" setup --json
+node "${CLAUDE_PLUGIN_ROOT}/scripts/ai-companion.mjs" setup
 ```
 
-The JSON has `providers.<id>.{ready, available, installed, loggedIn, detail}` for each registered provider, plus `settings` (current persistent config) and `knownProviders` (the registry).
+The non-JSON form prints a 5-7 line human-readable summary, one line per provider. Format: `- <id> [<tags>] (enabled|disabled): <detail>`. The `<detail>` field is one of:
+- `ready` — provider is fully set up
+- `CLI not on PATH` — provider's CLI binary needs `npm install -g ...`
+- `no auth credential detected` — CLI is installed but no key/login is set
+- `Sibling plugin "<id>" is not installed. Run /plugin install ...` — only fires if the umbrella's bundled fallback is also unavailable (rare)
+- Anything else — drill in with `verify --provider=<id> --json` for structured detail
 
-If every provider the user has previously enabled is `ready: true`, tell them setup is already complete and offer `/ai:settings` if they want to change anything. Stop.
+If every enabled provider's `<detail>` is `ready`, tell the user setup is already complete and offer `/ai:settings` if they want to change anything. Stop.
+
+When you need structured fields (`available`, `loggedIn`, `pluginInstalled`, raw probe output) for a specific provider during the per-provider walkthrough, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/ai-companion.mjs" verify --provider=<id> --json` — that returns the single-provider blob without dumping all three. Avoid `setup --json` unless you genuinely need the full multi-provider snapshot; its output is ~100 lines and clutters the chat.
 
 ## Step 1: ask which providers they want
 
