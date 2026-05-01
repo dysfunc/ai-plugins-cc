@@ -63,10 +63,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # NB: no `id-token: write`. With it set, npm 9.5+ tries OIDC trusted
+    # publishing before falling back to NPM_TOKEN — for packages that
+    # don't yet exist on npm and have no trusted-publisher configured,
+    # that path returns confusing 404s instead of a clean auth path.
+    # First-publish goes via the classic NPM_TOKEN flow only.
     permissions:
       contents: write
       pull-requests: write
-      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,9 +80,20 @@ jobs:
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+          always-auth: true
 
       - name: Install
         run: npm install --workspaces --include-workspace-root
+
+      - name: Verify npm auth (diagnostic)
+        # Smoke-tests that NPM_TOKEN reaches the registry before changesets
+        # tries to publish. If this step prints the wrong username (or fails
+        # outright), the token in GitHub Secrets isn't the one you think it
+        # is — the changesets step would otherwise return opaque 404s on
+        # PUT to scoped packages and not tell you why.
+        run: npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create Release Pull Request or Publish
         uses: changesets/action@v1
