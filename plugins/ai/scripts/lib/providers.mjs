@@ -20,10 +20,34 @@ import { invokeCodexCommand, discoverCodexInstall } from "@ai-plugins-cc/codex-a
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
+// Walk up from this module's URL looking for the umbrella plugin's own
+// manifest (`.claude-plugin/plugin.json`). That marker is the unambiguous
+// boundary regardless of whether this code is running as workspace
+// source (`<root>/scripts/lib/providers.mjs`) or as an esbuild bundle
+// (`<root>/scripts/ai-companion.mjs` with providers.mjs inlined). The
+// pre-bundle code computed root via `path.resolve(HERE, "..", "..")`,
+// which silently went one level too far up after bundling, sending
+// sibling lookups into the parent of the umbrella plugin.
+function findUmbrellaRoot(startDir) {
+  let dir = startDir;
+  for (let i = 0; i < 6; i += 1) {
+    if (fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
 function pluginRoot() {
-  return process.env.CLAUDE_PLUGIN_ROOT
-    ? path.resolve(process.env.CLAUDE_PLUGIN_ROOT)
-    : path.resolve(HERE, "..", "..");
+  if (process.env.CLAUDE_PLUGIN_ROOT) {
+    return path.resolve(process.env.CLAUDE_PLUGIN_ROOT);
+  }
+  const found = findUmbrellaRoot(HERE);
+  if (found) return found;
+  // Last-ditch fallback for unusual layouts: assume HERE is two levels
+  // deep inside the plugin (the source-tree case).
+  return path.resolve(HERE, "..", "..");
 }
 
 function listVersionsDescending(dir) {

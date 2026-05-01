@@ -340,8 +340,23 @@ import path3 from "node:path";
 import process5 from "node:process";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 var HERE = path3.dirname(fileURLToPath2(import.meta.url));
+function findUmbrellaRoot(startDir) {
+  let dir = startDir;
+  for (let i = 0; i < 6; i += 1) {
+    if (fs3.existsSync(path3.join(dir, ".claude-plugin", "plugin.json"))) return dir;
+    const parent = path3.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
 function pluginRoot() {
-  return process5.env.CLAUDE_PLUGIN_ROOT ? path3.resolve(process5.env.CLAUDE_PLUGIN_ROOT) : path3.resolve(HERE, "..", "..");
+  if (process5.env.CLAUDE_PLUGIN_ROOT) {
+    return path3.resolve(process5.env.CLAUDE_PLUGIN_ROOT);
+  }
+  const found = findUmbrellaRoot(HERE);
+  if (found) return found;
+  return path3.resolve(HERE, "..", "..");
 }
 function listVersionsDescending(dir) {
   try {
