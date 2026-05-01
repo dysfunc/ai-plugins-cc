@@ -48,34 +48,3 @@ jobs:
         env:
           BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
         run: node scripts/check-core-changeset.mjs
-
-  release:
-    name: Release
-    runs-on: ubuntu-latest
-    needs: [test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions:
-      contents: write
-      pull-requests: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Install
-        run: npm install --workspaces --include-workspace-root
-
-      - name: Create Release Pull Request or Publish
-        uses: changesets/action@v1
-        with:
-          publish: npm run changeset:publish
-          version: npm run changeset:version
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

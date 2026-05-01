@@ -1,7 +1,7 @@
 {
   "name": "@ai-plugins-cc/grok",
   "version": "0.1.0",
-  "private": false,
+  "private": true,
   "type": "module",
   "description": "Use Grok from Claude Code to review code or delegate tasks.",
   "license": "Apache-2.0",
@@ -12,9 +12,6 @@
   },
   "homepage": "https://github.com/dysfunc/ai-plugins-cc#readme",
   "bugs": "https://github.com/dysfunc/ai-plugins-cc/issues",
-  "publishConfig": {
-    "access": "public"
-  },
   "engines": {
     "node": ">=20.0.0"
   },

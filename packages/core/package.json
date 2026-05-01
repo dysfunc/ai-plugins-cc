@@ -1,7 +1,7 @@
 {
   "name": "@ai-plugins-cc/core",
   "version": "0.1.0",
-  "private": false,
+  "private": true,
   "type": "module",
   "description": "Shared core library for ai-plugins-cc: state, process, git, context, render, job-control, tracked-jobs, workspace, fs, args, prompts.",
   "license": "Apache-2.0",
@@ -12,9 +12,6 @@
   },
   "homepage": "https://github.com/dysfunc/ai-plugins-cc#readme",
   "bugs": "https://github.com/dysfunc/ai-plugins-cc/issues",
-  "publishConfig": {
-    "access": "public"
-  },
   "engines": {
     "node": ">=20.0.0"
   },
