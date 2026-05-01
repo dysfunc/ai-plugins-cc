@@ -101,15 +101,26 @@ export function resolveSiblingCompanionPath(providerId) {
     path.join(marketplaceParent, version, relative)
   );
 
-  // Bound every candidate to the umbrella's parent or grandparent
-  // directory. Without this, a malicious CLAUDE_PLUGIN_ROOT (like
-  // "/tmp/evil/plugins/ai") combined with a legitimate-looking
-  // providerId could resolve to an attacker-controlled script outside
-  // the marketplace tree. We accept candidates whose real path is
-  // either under root/.. (workspace dev) or root/../.. (marketplace
-  // cache).
-  const allowedRoots = [path.resolve(root, ".."), path.resolve(root, "..", "..")];
-  const candidates = [devSibling, ...marketplaceVersioned].filter((candidate) =>
+  // Bundled fallback: the umbrella ships gemini/grok runtimes inside its
+  // own dist as `sibling-fallback/<provider>/scripts/...`. Used when the
+  // user installed only `ai@ai-plugins-cc` and not the per-provider
+  // marketplace plugins. A real sibling install (above) wins if both
+  // exist, so users running /gemini:* alongside /ai:* keep getting their
+  // installed-version code rather than the umbrella's snapshot.
+  const bundledFallback = path.resolve(root, "sibling-fallback", providerId, relative);
+
+  // Bound every candidate to a known-safe ancestor. Workspace dev clones
+  // sit under root/..; marketplace caches under root/../..; bundled
+  // fallbacks live inside root itself. Without this filter, a malicious
+  // CLAUDE_PLUGIN_ROOT plus a legitimate-looking providerId could
+  // resolve to an attacker-controlled script outside the marketplace
+  // tree.
+  const allowedRoots = [
+    path.resolve(root),
+    path.resolve(root, ".."),
+    path.resolve(root, "..", "..")
+  ];
+  const candidates = [devSibling, ...marketplaceVersioned, bundledFallback].filter((candidate) =>
     allowedRoots.some((allowedRoot) => isUnder(candidate, allowedRoot))
   );
 

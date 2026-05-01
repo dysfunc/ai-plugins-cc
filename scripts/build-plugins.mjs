@@ -166,6 +166,31 @@ async function buildPlugin(name) {
   return { name, distDir, scriptsBundled: count };
 }
 
+// Provider plugins (gemini, grok) whose runtimes the umbrella also ships
+// as bundled fallbacks. The umbrella's resolveSiblingCompanionPath() will
+// prefer a real sibling install (workspace dev or marketplace cache) but
+// fall back to these copies when only the umbrella plugin is installed.
+// That makes `/plugin install ai@ai-plugins-cc` a one-shot install for
+// users who don't want the per-provider /gemini:* / /grok:* surface.
+const FALLBACK_PROVIDERS = ["gemini", "grok"];
+const FALLBACK_SUBDIRS = ["scripts", "prompts", "schemas"];
+
+async function copyFallbacksIntoUmbrella() {
+  const umbrellaFallbackRoot = path.join(DIST_ROOT, "ai", "sibling-fallback");
+  await rmrf(umbrellaFallbackRoot);
+  for (const provider of FALLBACK_PROVIDERS) {
+    const providerDist = path.join(DIST_ROOT, provider);
+    if (!existsSync(providerDist)) continue;
+    for (const sub of FALLBACK_SUBDIRS) {
+      const fromDir = path.join(providerDist, sub);
+      if (!existsSync(fromDir)) continue;
+      const toDir = path.join(umbrellaFallbackRoot, provider, sub);
+      await copyTree(fromDir, toDir);
+    }
+  }
+  return umbrellaFallbackRoot;
+}
+
 async function main() {
   await rmrf(DIST_ROOT);
   await fs.mkdir(DIST_ROOT, { recursive: true });
@@ -178,6 +203,12 @@ async function main() {
       `Built ${name}: ${result.scriptsBundled} script(s) bundled → ${path.relative(REPO_ROOT, result.distDir)}\n`
     );
   }
+
+  const fallbackRoot = await copyFallbacksIntoUmbrella();
+  process.stdout.write(
+    `Copied gemini + grok fallbacks → ${path.relative(REPO_ROOT, fallbackRoot)}\n`
+  );
+
   process.stdout.write("\nAll plugins built.\n");
 }
 

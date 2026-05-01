@@ -380,8 +380,13 @@ function resolveSiblingCompanionPath(providerId) {
   const marketplaceVersioned = listVersionsDescending(marketplaceParent).map(
     (version) => path3.join(marketplaceParent, version, relative)
   );
-  const allowedRoots = [path3.resolve(root, ".."), path3.resolve(root, "..", "..")];
-  const candidates = [devSibling, ...marketplaceVersioned].filter(
+  const bundledFallback = path3.resolve(root, "sibling-fallback", providerId, relative);
+  const allowedRoots = [
+    path3.resolve(root),
+    path3.resolve(root, ".."),
+    path3.resolve(root, "..", "..")
+  ];
+  const candidates = [devSibling, ...marketplaceVersioned, bundledFallback].filter(
     (candidate) => allowedRoots.some((allowedRoot) => isUnder(candidate, allowedRoot))
   );
   const found = firstExisting(candidates);

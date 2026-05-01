@@ -29,6 +29,8 @@ For each selected provider, follow the matching block below. Run them in the ord
 
 For each selected provider:
 
+> **Important:** the umbrella plugin (`ai@ai-plugins-cc`) ships bundled fallback runtimes for Gemini and Grok at `sibling-fallback/<provider>/`. **Do not** tell the user to `/plugin install gemini@ai-plugins-cc` or `/plugin install grok@ai-plugins-cc` as a prerequisite — `resolveSiblingCompanionPath` will use the bundled fallback automatically when the per-provider Claude plugin isn't installed. The per-provider plugins are only needed if the user wants the dedicated `/gemini:*` / `/grok:*` slash commands; the `/ai:*` flow works with just the umbrella.
+
 ### Gemini
 
 If `available: false`, the user already opted in by selecting Gemini — don't ask again, just install:
