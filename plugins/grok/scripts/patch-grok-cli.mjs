@@ -37,10 +37,34 @@ const ORIGINAL_PATTERN = /requestPayload\.search_parameters = searchOptions\.sea
 const CLIENT_RELATIVE = path.join("dist", "grok", "client.js");
 const PACKAGE_FOLDER = path.join("@vibe-kit", "grok-cli");
 
+// Maximum number of `..` walks when locating the package root from the
+// resolved binary. Two is enough for typical npm installs:
+//   <prefix>/lib/node_modules/@vibe-kit/grok-cli/dist/cli.js  (npm shim resolves here)
+//   walk up to                @vibe-kit/grok-cli/dist
+//   walk up to                @vibe-kit/grok-cli              ← contains dist/grok/client.js
+// Three or more invites a write-what-where attack via a symlink at an
+// outer level pointing into a legitimate-looking path.
+const MAX_BINARY_WALK_UP = 3;
+
 function tryResolveGrokBinary() {
+  // GROK_BIN is honored, but rejected if it points at a symlink — that's
+  // the simplest vector for a supply-chain attack against this script
+  // (set GROK_BIN to a symlink whose target's package walks resolve into
+  // a system file containing the search_parameters pattern by accident).
   if (process.env.GROK_BIN) {
     const explicit = path.resolve(process.env.GROK_BIN);
-    if (fs.existsSync(explicit)) return explicit;
+    let lstat;
+    try { lstat = fs.lstatSync(explicit); } catch { lstat = null; }
+    if (lstat) {
+      if (lstat.isSymbolicLink()) {
+        process.stderr.write(
+          `grok-patch: refusing to follow GROK_BIN=${explicit} because it is a symlink. ` +
+            `Set GROK_BIN to a real file path or unset it.\n`
+        );
+        return null;
+      }
+      return explicit;
+    }
   }
   try {
     const located = execFileSync("which", ["grok"], { encoding: "utf8" }).trim();
@@ -52,17 +76,16 @@ function tryResolveGrokBinary() {
 }
 
 function tryClientPathFromBinary(binPath) {
-  // Resolve symlinks: npm installs `grok` as a shim that points at the
-  // package's actual entry. The real CLI bundle lives next to that entry.
+  // Resolve symlinks once (npm installs grok as a shim) then walk up at
+  // most MAX_BINARY_WALK_UP directories looking for dist/grok/client.js.
   let real;
   try {
     real = fs.realpathSync(binPath);
   } catch {
     return null;
   }
-  // Walk up until we find the package root that contains dist/grok/client.js.
   let dir = path.dirname(real);
-  for (let i = 0; i < 6; i += 1) {
+  for (let i = 0; i < MAX_BINARY_WALK_UP; i += 1) {
     const candidate = path.join(dir, CLIENT_RELATIVE);
     if (fs.existsSync(candidate)) return candidate;
     const parent = path.dirname(dir);
@@ -83,14 +106,47 @@ function tryClientPathFromNpmGlobal() {
   return fs.existsSync(candidate) ? candidate : null;
 }
 
+/**
+ * Verify that the resolved client.js path is actually inside an
+ * @vibe-kit/grok-cli install — i.e. its real path contains
+ * `<separator>@vibe-kit<separator>grok-cli<separator>`. Without this
+ * check, `tryClientPathFromBinary` could write to any directory tree
+ * that happens to contain `dist/grok/client.js` (an attacker who can
+ * point GROK_BIN or $PATH at a crafted layout).
+ */
+function isPathInsideGrokCliPackage(clientPath) {
+  let real;
+  try {
+    real = fs.realpathSync(clientPath);
+  } catch {
+    return false;
+  }
+  const sep = path.sep;
+  const needle = `${sep}@vibe-kit${sep}grok-cli${sep}`;
+  return real.includes(needle);
+}
+
 function findClientPath() {
+  const candidates = [];
   const bin = tryResolveGrokBinary();
   if (bin) {
     const fromBinary = tryClientPathFromBinary(bin);
-    if (fromBinary) return { path: fromBinary, source: `grok binary (${bin})` };
+    if (fromBinary) candidates.push({ path: fromBinary, source: `grok binary (${bin})` });
   }
   const fromNpm = tryClientPathFromNpmGlobal();
-  if (fromNpm) return { path: fromNpm, source: "npm root -g" };
+  if (fromNpm) candidates.push({ path: fromNpm, source: "npm root -g" });
+
+  for (const candidate of candidates) {
+    // Bound the blast radius. Even if a candidate path exists and
+    // contains the regex we're looking for, we only mutate it when its
+    // real path lives inside a recognizable @vibe-kit/grok-cli install.
+    if (isPathInsideGrokCliPackage(candidate.path)) return candidate;
+    process.stderr.write(
+      `grok-patch: ignoring candidate ${candidate.path} (resolved outside ` +
+        `@vibe-kit/grok-cli — refusing to patch arbitrary files via ${candidate.source}).\n`
+    );
+  }
+
   throw new Error(
     `Could not locate @vibe-kit/grok-cli's client.js. ` +
       `Tried GROK_BIN, \`which grok\`, and \`npm root -g\`. ` +

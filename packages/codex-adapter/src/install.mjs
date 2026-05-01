@@ -37,6 +37,19 @@ export async function installCodexUpstream(options = {}) {
     );
   }
   const expectedSha = options.sha ?? config.pinnedSha ?? null;
+  const allowUnpinned =
+    options.allowUnpinned === true ||
+    process.env.AI_PLUGINS_CC_ALLOW_UNPINNED_CODEX === "1";
+  if (!expectedSha && !allowUnpinned) {
+    throw new Error(
+      `Refusing to install upstream ${repo}@${tag} without a pinned SHA-256.\n` +
+        "Set ai-plugins-cc.upstream.pinnedSha in @ai-plugins-cc/codex-adapter's " +
+        "package.json (run /ai:codex-update --pin to capture the current release's " +
+        "hash and write it back). For one-off maintainer use, pass options.sha or " +
+        "set AI_PLUGINS_CC_ALLOW_UNPINNED_CODEX=1 — but verifying upstream code with " +
+        "no integrity check exposes you to supply-chain compromise of the release feed."
+    );
+  }
   const into = options.into ?? defaultManagedCachePath();
   const fetchImpl = options.fetchImpl ?? defaultFetch;
   const extractImpl = options.extractImpl ?? defaultExtract;

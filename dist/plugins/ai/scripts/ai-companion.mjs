@@ -87,6 +87,13 @@ async function installCodexUpstream(options = {}) {
     );
   }
   const expectedSha = options.sha ?? config.pinnedSha ?? null;
+  const allowUnpinned = options.allowUnpinned === true || process3.env.AI_PLUGINS_CC_ALLOW_UNPINNED_CODEX === "1";
+  if (!expectedSha && !allowUnpinned) {
+    throw new Error(
+      `Refusing to install upstream ${repo}@${tag} without a pinned SHA-256.
+Set ai-plugins-cc.upstream.pinnedSha in @ai-plugins-cc/codex-adapter's package.json (run /ai:codex-update --pin to capture the current release's hash and write it back). For one-off maintainer use, pass options.sha or set AI_PLUGINS_CC_ALLOW_UNPINNED_CODEX=1 \u2014 but verifying upstream code with no integrity check exposes you to supply-chain compromise of the release feed.`
+    );
+  }
   const into = options.into ?? defaultManagedCachePath();
   const fetchImpl = options.fetchImpl ?? defaultFetch;
   const extractImpl = options.extractImpl ?? defaultExtract;
@@ -360,6 +367,11 @@ var SiblingPluginMissingError = class extends Error {
   }
 };
 function resolveSiblingCompanionPath(providerId) {
+  if (!ALLOWED_PROVIDER_IDS.has(providerId)) {
+    throw new Error(
+      `resolveSiblingCompanionPath: unknown providerId "${providerId}". Expected one of: ${[...ALLOWED_PROVIDER_IDS].join(", ")}.`
+    );
+  }
   const root = pluginRoot();
   const filename = `${providerId}-companion.mjs`;
   const relative = path3.join("scripts", filename);
@@ -368,12 +380,20 @@ function resolveSiblingCompanionPath(providerId) {
   const marketplaceVersioned = listVersionsDescending(marketplaceParent).map(
     (version) => path3.join(marketplaceParent, version, relative)
   );
-  const candidates = [devSibling, ...marketplaceVersioned];
+  const allowedRoots = [path3.resolve(root, ".."), path3.resolve(root, "..", "..")];
+  const candidates = [devSibling, ...marketplaceVersioned].filter(
+    (candidate) => allowedRoots.some((allowedRoot) => isUnder(candidate, allowedRoot))
+  );
   const found = firstExisting(candidates);
   if (!found) {
     throw new SiblingPluginMissingError(providerId, candidates);
   }
   return found;
+}
+var ALLOWED_PROVIDER_IDS = /* @__PURE__ */ new Set(["gemini", "grok", "codex"]);
+function isUnder(candidate, ancestor) {
+  const relativeFromAncestor = path3.relative(ancestor, candidate);
+  return relativeFromAncestor !== "" && !relativeFromAncestor.startsWith("..") && !path3.isAbsolute(relativeFromAncestor);
 }
 var PROVIDERS = {
   gemini: {
@@ -423,6 +443,38 @@ function isProvider(id) {
 var DEFAULT_TIMEOUT_MS2 = 10 * 60 * 1e3;
 var DEFAULT_STDOUT_CAP2 = 50 * 1024 * 1024;
 var DEFAULT_STDERR_CAP = 10 * 1024 * 1024;
+var BASE_ENV_ALLOWLIST = /* @__PURE__ */ new Set([
+  "PATH",
+  "HOME",
+  "USER",
+  "LANG",
+  "LC_ALL",
+  "TZ",
+  "TMPDIR",
+  "SHELL",
+  "TERM",
+  "CLAUDE_PLUGIN_DATA",
+  "CLAUDE_PLUGIN_ROOT",
+  "AI_PLUGINS_CC_SESSION_ID"
+]);
+function providerEnvAllowlistAdditions(providerId) {
+  if (providerId === "gemini") {
+    return ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_CLI_TRUST_WORKSPACE"];
+  }
+  if (providerId === "grok") {
+    return ["GROK_API_KEY", "XAI_API_KEY", "GROK_BASE_URL", "GROK_BIN", "GROK_MODEL"];
+  }
+  return [];
+}
+function filteredEnvForProvider(providerId, extra = {}) {
+  const allow = new Set(BASE_ENV_ALLOWLIST);
+  for (const key of providerEnvAllowlistAdditions(providerId)) allow.add(key);
+  const out = {};
+  for (const key of allow) {
+    if (process6.env[key] !== void 0) out[key] = process6.env[key];
+  }
+  return { ...out, ...extra };
+}
 function killProcessTree(child, signal = "SIGKILL") {
   if (!child || typeof child.pid !== "number") return;
   try {
@@ -512,6 +564,8 @@ async function dispatchToProvider(providerId, providerArgs, options = {}) {
     const result = await provider.invoke({
       args: providerArgs,
       cwd: options.cwd,
+      // codex-adapter applies its own ENV_ALLOWLIST in invoke.mjs; pass
+      // the un-filtered overlay through and let the adapter filter.
       env: mergedEnv,
       timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS2,
       stdoutCapBytes: options.stdoutCapBytes,
@@ -540,7 +594,7 @@ function spawnInHouseCompanion(provider, providerArgs, options = {}) {
   const stdoutCap = options.stdoutCapBytes ?? DEFAULT_STDOUT_CAP2;
   const stderrCap = options.stderrCapBytes ?? DEFAULT_STDERR_CAP;
   const args = Array.isArray(providerArgs) ? providerArgs : [];
-  const env = { ...process6.env, ...options.env ?? {} };
+  const env = options.unsafeRawEnv ? { ...process6.env, ...options.env ?? {} } : filteredEnvForProvider(provider.id, options.env ?? {});
   return new Promise((resolve) => {
     const child = spawn3(process6.execPath, [provider.companionPath, ...args], {
       cwd: options.cwd ?? process6.cwd(),

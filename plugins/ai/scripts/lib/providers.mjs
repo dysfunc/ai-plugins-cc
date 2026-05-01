@@ -73,6 +73,18 @@ export class SiblingPluginMissingError extends Error {
 }
 
 export function resolveSiblingCompanionPath(providerId) {
+  // Reject any providerId that isn't in the registered set BEFORE
+  // interpolating it into a path — otherwise a tainted providerId like
+  // "../../etc" or a literal dot path would escape the umbrella's
+  // sibling directory. Defence-in-depth; today every call site already
+  // validates, but the function itself is the trust boundary.
+  if (!ALLOWED_PROVIDER_IDS.has(providerId)) {
+    throw new Error(
+      `resolveSiblingCompanionPath: unknown providerId "${providerId}". ` +
+        `Expected one of: ${[...ALLOWED_PROVIDER_IDS].join(", ")}.`
+    );
+  }
+
   const root = pluginRoot();
   const filename = `${providerId}-companion.mjs`;
   const relative = path.join("scripts", filename);
@@ -89,12 +101,37 @@ export function resolveSiblingCompanionPath(providerId) {
     path.join(marketplaceParent, version, relative)
   );
 
-  const candidates = [devSibling, ...marketplaceVersioned];
+  // Bound every candidate to the umbrella's parent or grandparent
+  // directory. Without this, a malicious CLAUDE_PLUGIN_ROOT (like
+  // "/tmp/evil/plugins/ai") combined with a legitimate-looking
+  // providerId could resolve to an attacker-controlled script outside
+  // the marketplace tree. We accept candidates whose real path is
+  // either under root/.. (workspace dev) or root/../.. (marketplace
+  // cache).
+  const allowedRoots = [path.resolve(root, ".."), path.resolve(root, "..", "..")];
+  const candidates = [devSibling, ...marketplaceVersioned].filter((candidate) =>
+    allowedRoots.some((allowedRoot) => isUnder(candidate, allowedRoot))
+  );
+
   const found = firstExisting(candidates);
   if (!found) {
     throw new SiblingPluginMissingError(providerId, candidates);
   }
   return found;
+}
+
+const ALLOWED_PROVIDER_IDS = new Set(["gemini", "grok", "codex"]);
+
+function isUnder(candidate, ancestor) {
+  const relativeFromAncestor = path.relative(ancestor, candidate);
+  // path.relative returns a string starting with ".." (or an absolute
+  // path on Windows) when `candidate` escapes `ancestor`. We accept
+  // anything else.
+  return (
+    relativeFromAncestor !== "" &&
+    !relativeFromAncestor.startsWith("..") &&
+    !path.isAbsolute(relativeFromAncestor)
+  );
 }
 
 const PROVIDERS = {

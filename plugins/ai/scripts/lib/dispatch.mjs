@@ -7,6 +7,47 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_STDOUT_CAP = 50 * 1024 * 1024;
 const DEFAULT_STDERR_CAP = 10 * 1024 * 1024;
 
+// Allowlist of env vars passed to in-house provider companions. Without
+// this filter, every secret in the parent shell (AWS_*, GITHUB_TOKEN,
+// arbitrary tokens persisted to ~/.zshenv) would be inherited by gemini
+// and grok subprocesses — provider CLIs we don't audit. Mirrors the
+// codex-adapter's invoke.mjs ENV_ALLOWLIST. Provider-specific keys are
+// added per-id via providerEnvAllowlistAdditions().
+const BASE_ENV_ALLOWLIST = new Set([
+  "PATH",
+  "HOME",
+  "USER",
+  "LANG",
+  "LC_ALL",
+  "TZ",
+  "TMPDIR",
+  "SHELL",
+  "TERM",
+  "CLAUDE_PLUGIN_DATA",
+  "CLAUDE_PLUGIN_ROOT",
+  "AI_PLUGINS_CC_SESSION_ID"
+]);
+
+function providerEnvAllowlistAdditions(providerId) {
+  if (providerId === "gemini") {
+    return ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_CLI_TRUST_WORKSPACE"];
+  }
+  if (providerId === "grok") {
+    return ["GROK_API_KEY", "XAI_API_KEY", "GROK_BASE_URL", "GROK_BIN", "GROK_MODEL"];
+  }
+  return [];
+}
+
+function filteredEnvForProvider(providerId, extra = {}) {
+  const allow = new Set(BASE_ENV_ALLOWLIST);
+  for (const key of providerEnvAllowlistAdditions(providerId)) allow.add(key);
+  const out = {};
+  for (const key of allow) {
+    if (process.env[key] !== undefined) out[key] = process.env[key];
+  }
+  return { ...out, ...extra };
+}
+
 /**
  * Send `signal` to the process group `child` belongs to, falling back to
  * killing only `child` if the group send fails (which happens on platforms
@@ -162,6 +203,8 @@ export async function dispatchToProvider(providerId, providerArgs, options = {})
     const result = await provider.invoke({
       args: providerArgs,
       cwd: options.cwd,
+      // codex-adapter applies its own ENV_ALLOWLIST in invoke.mjs; pass
+      // the un-filtered overlay through and let the adapter filter.
       env: mergedEnv,
       timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       stdoutCapBytes: options.stdoutCapBytes,
@@ -199,7 +242,15 @@ export function spawnInHouseCompanion(provider, providerArgs, options = {}) {
   const stdoutCap = options.stdoutCapBytes ?? DEFAULT_STDOUT_CAP;
   const stderrCap = options.stderrCapBytes ?? DEFAULT_STDERR_CAP;
   const args = Array.isArray(providerArgs) ? providerArgs : [];
-  const env = { ...process.env, ...(options.env ?? {}) };
+  // Filter env to a small allowlist before spawning. The previous
+  // `{ ...process.env, ...options.env }` pattern leaked every secret in
+  // the parent shell to a third-party provider CLI; this restores the
+  // same trust boundary the codex-adapter has shipped since day one.
+  // Tests can opt out by passing options.unsafeRawEnv: true (used only by
+  // the spawnInHouseCompanion fixtures, which spawn fake-companion.mjs).
+  const env = options.unsafeRawEnv
+    ? { ...process.env, ...(options.env ?? {}) }
+    : filteredEnvForProvider(provider.id, options.env ?? {});
 
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [provider.companionPath, ...args], {

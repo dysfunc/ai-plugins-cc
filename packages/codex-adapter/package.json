@@ -38,7 +38,7 @@
       "repo": "openai/codex-plugin-cc",
       "pinnedTag": "v1.0.4",
       "_pinnedShaComment": "Pin a SHA-256 of the GitHub tarball here for hash-verified installs. Leave null to install without verification (acceptable for development; production should pin).",
-      "pinnedSha": null
+      "pinnedSha": "2cbcbcb01e937f2a11e1e9b05b4e2a31529417d0eae00b80b7febb2381e4e88c"
     }
   }
 }

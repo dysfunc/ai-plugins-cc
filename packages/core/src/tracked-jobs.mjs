@@ -45,8 +45,45 @@ function normalizeProgressEvent(value) {
   };
 }
 
+// Patterns for tokens we never want to land in workspace log files. The
+// underlying provider CLIs occasionally print full API keys when they hit
+// an authentication failure ("401 Unauthorized for key xai-..."), and
+// those messages get captured into stderr-derived progress events that
+// land here. Workspace log files persist on disk indefinitely, so a leak
+// here is recoverable months later by anyone with FS access.
+//
+// Replacement keeps a short prefix so the *kind* of credential is still
+// debuggable, but the rest is masked. Order matters — match the more
+// specific Anthropic prefix before the generic `sk-`.
+const SECRET_PATTERNS = [
+  // Anthropic: sk-ant-<base64ish>
+  { regex: /sk-ant-[A-Za-z0-9_-]{8,}/g, mask: "sk-ant-<redacted>" },
+  // OpenAI / Codex: sk-<base64ish> (~20+ chars)
+  { regex: /\bsk-[A-Za-z0-9_-]{16,}/g, mask: "sk-<redacted>" },
+  // xAI: xai-<base64ish> (~40+ chars in practice)
+  { regex: /\bxai-[A-Za-z0-9_-]{16,}/g, mask: "xai-<redacted>" },
+  // Google AI Studio: AIza<35 base64ish>
+  { regex: /\bAIza[A-Za-z0-9_-]{20,}/g, mask: "AIza<redacted>" },
+  // Bearer <token> in Authorization headers
+  { regex: /Bearer\s+[A-Za-z0-9._-]{8,}/g, mask: "Bearer <redacted>" }
+];
+
+/**
+ * Mask common API key patterns in a string before it reaches the disk.
+ * No-ops on empty / non-string input. Idempotent — re-running doesn't
+ * double-mask because the replacement strings don't match the patterns.
+ */
+export function scrubSecrets(text) {
+  let out = String(text ?? "");
+  if (!out) return out;
+  for (const { regex, mask } of SECRET_PATTERNS) {
+    out = out.replace(regex, mask);
+  }
+  return out;
+}
+
 export function appendLogLine(logFile, message) {
-  const normalized = String(message ?? "").trim();
+  const normalized = scrubSecrets(String(message ?? "").trim());
   if (!logFile || !normalized) {
     return;
   }
@@ -57,7 +94,8 @@ export function appendLogBlock(logFile, title, body) {
   if (!logFile || !body) {
     return;
   }
-  fs.appendFileSync(logFile, `\n[${nowIso()}] ${title}\n${String(body).trimEnd()}\n`, "utf8");
+  const scrubbedBody = scrubSecrets(String(body).trimEnd());
+  fs.appendFileSync(logFile, `\n[${nowIso()}] ${title}\n${scrubbedBody}\n`, "utf8");
 }
 
 export function createJobLogFile(workspaceRoot, jobId, title) {

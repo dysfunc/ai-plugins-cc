@@ -42,10 +42,26 @@ test("umbrella resolves @ai-plugins-cc/codex-adapter and installCodexUpstream is
   const tarball = buildFakeUpstreamTarball("v3.2.1", "3.2.1");
   const into = path.join(mkdtemp("umbrella-install-"), "codex-plugin-cc");
 
+  // Point at a fixture package.json with no pinnedSha so the SHA gate
+  // doesn't pick up the real adapter's pinned hash and reject the test
+  // tarball. allowUnpinned then permits the unverified install path.
+  const adapterPkgPath = path.join(mkdtemp("umbrella-pkg-"), "package.json");
+  fs.writeFileSync(
+    adapterPkgPath,
+    JSON.stringify(
+      { "ai-plugins-cc": { upstream: { repo: "openai/codex-plugin-cc", pinnedTag: null } } },
+      null,
+      2
+    ),
+    "utf8"
+  );
+
   const result = await installCodexUpstream({
     tag: "v3.2.1",
     into,
-    fetchImpl: async () => tarball
+    fetchImpl: async () => tarball,
+    adapterPackageJson: adapterPkgPath,
+    allowUnpinned: true
   });
 
   assert.equal(result.tag, "v3.2.1");

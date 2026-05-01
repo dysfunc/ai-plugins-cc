@@ -12,6 +12,25 @@ function mkdtemp(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+// Write a fixture package.json with no pinnedSha. Tests that don't care
+// about pin verification pair this with `allowUnpinned: true` so the
+// install proceeds without inheriting the adapter's real pinnedSha (which
+// would mismatch every test's freshly-built fake tarball).
+function writeUnpinnedAdapterPkg() {
+  const dir = mkdtemp("install-no-sha-pkg-");
+  const pkgPath = path.join(dir, "package.json");
+  fs.writeFileSync(
+    pkgPath,
+    JSON.stringify(
+      { "ai-plugins-cc": { upstream: { repo: "openai/codex-plugin-cc", pinnedTag: null } } },
+      null,
+      2
+    ),
+    "utf8"
+  );
+  return pkgPath;
+}
+
 // Build a gzipped tar that mimics a GitHub source archive: a single top-level
 // directory whose name is "<repo-tail>-<tag>", containing a minimal codex plugin
 // tree with a manifest version. Returns { tarball: Buffer, expectedTopDirName }.
@@ -52,7 +71,9 @@ test("installCodexUpstream installs a tarball, exposes the resolved version, ato
   const result = await installCodexUpstream({
     tag: "v9.9.9",
     into,
-    fetchImpl: fakeFetchReturning(tarball)
+    fetchImpl: fakeFetchReturning(tarball),
+    adapterPackageJson: writeUnpinnedAdapterPkg(),
+    allowUnpinned: true
   });
 
   assert.equal(result.root, into);
@@ -72,8 +93,9 @@ test("installCodexUpstream installs a tarball, exposes the resolved version, ato
 
 test("installCodexUpstream replaces an existing install on subsequent runs", async () => {
   const into = path.join(mkdtemp("install-replace-"), "codex-plugin-cc");
+  const adapterPkg = writeUnpinnedAdapterPkg();
   const first = buildFakeUpstreamTarball({ tag: "v1.0.0", version: "1.0.0" });
-  await installCodexUpstream({ tag: "v1.0.0", into, fetchImpl: fakeFetchReturning(first.tarball) });
+  await installCodexUpstream({ tag: "v1.0.0", into, fetchImpl: fakeFetchReturning(first.tarball), adapterPackageJson: adapterPkg, allowUnpinned: true });
   const before = JSON.parse(
     fs.readFileSync(path.join(into, "plugins", "codex", ".claude-plugin", "plugin.json"), "utf8")
   );
@@ -83,7 +105,9 @@ test("installCodexUpstream replaces an existing install on subsequent runs", asy
   const result = await installCodexUpstream({
     tag: "v1.1.0",
     into,
-    fetchImpl: fakeFetchReturning(second.tarball)
+    fetchImpl: fakeFetchReturning(second.tarball),
+    adapterPackageJson: adapterPkg,
+    allowUnpinned: true
   });
   assert.equal(result.replaced, true);
   assert.equal(result.version, "1.1.0");
@@ -127,6 +151,22 @@ test("installCodexUpstream refuses to install when SHA mismatches and leaves the
   assert.equal(fs.existsSync(into), false, "no install on SHA mismatch");
 });
 
+test("installCodexUpstream refuses to install when pinnedSha is null and allowUnpinned is not set", async () => {
+  const { tarball } = buildFakeUpstreamTarball({ tag: "v3.0.0" });
+  const into = path.join(mkdtemp("install-no-sha-"), "codex-plugin-cc");
+
+  await assert.rejects(
+    installCodexUpstream({
+      tag: "v3.0.0",
+      into,
+      fetchImpl: fakeFetchReturning(tarball),
+      adapterPackageJson: writeUnpinnedAdapterPkg()
+    }),
+    /Refusing to install upstream .* without a pinned SHA-256/
+  );
+  assert.equal(fs.existsSync(into), false, "no install when SHA pin is missing");
+});
+
 test("installCodexUpstream throws a clear error when no tag is pinned and none is passed", async () => {
   const adapterPkgPath = path.join(mkdtemp("install-noconfig-"), "package.json");
   fs.writeFileSync(
@@ -159,7 +199,8 @@ test("installCodexUpstream with pin: true writes observedSha back to the adapter
     into,
     adapterPackageJson: adapterPkgPath,
     fetchImpl: fakeFetchReturning(tarball),
-    pin: true
+    pin: true,
+    allowUnpinned: true
   });
 
   assert.equal(result.pin.written, true);
@@ -190,7 +231,8 @@ test("installCodexUpstream with pin: true refuses to write inside node_modules a
     into,
     adapterPackageJson: adapterPkgPath,
     fetchImpl: fakeFetchReturning(tarball),
-    pin: true
+    pin: true,
+    allowUnpinned: true
   });
 
   assert.equal(result.pin.written, false);
@@ -219,7 +261,8 @@ test("after pinning, a subsequent install with the same tag verifies cleanly", a
     into: into1,
     adapterPackageJson: adapterPkgPath,
     fetchImpl,
-    pin: true
+    pin: true,
+    allowUnpinned: true
   });
   assert.equal(first.pin.written, true);
 

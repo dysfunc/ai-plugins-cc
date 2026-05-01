@@ -19,6 +19,14 @@ function withEnv(key, value, fn) {
   }
 }
 
+// Isolate every test from the developer's real ~/.cache. discover.mjs
+// prefers the managed-cache path under os.homedir() over a sibling-repo
+// install, so a developer who ran /ai:codex-update once would shadow the
+// fixture installs the tests rely on. Override HOME to a fresh temp dir
+// per test run.
+const TEST_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "codex-test-home-"));
+process.env.HOME = TEST_HOME;
+
 test("discoverCodexInstall finds the install at CODEX_PLUGIN_PATH", () => {
   const fake = writeFakeCodexInstall();
   const result = withEnv("CODEX_PLUGIN_PATH", fake.root, () => discoverCodexInstall());

@@ -1534,8 +1534,28 @@ function normalizeProgressEvent(value) {
     logBody: null
   };
 }
+var SECRET_PATTERNS = [
+  // Anthropic: sk-ant-<base64ish>
+  { regex: /sk-ant-[A-Za-z0-9_-]{8,}/g, mask: "sk-ant-<redacted>" },
+  // OpenAI / Codex: sk-<base64ish> (~20+ chars)
+  { regex: /\bsk-[A-Za-z0-9_-]{16,}/g, mask: "sk-<redacted>" },
+  // xAI: xai-<base64ish> (~40+ chars in practice)
+  { regex: /\bxai-[A-Za-z0-9_-]{16,}/g, mask: "xai-<redacted>" },
+  // Google AI Studio: AIza<35 base64ish>
+  { regex: /\bAIza[A-Za-z0-9_-]{20,}/g, mask: "AIza<redacted>" },
+  // Bearer <token> in Authorization headers
+  { regex: /Bearer\s+[A-Za-z0-9._-]{8,}/g, mask: "Bearer <redacted>" }
+];
+function scrubSecrets(text) {
+  let out = String(text ?? "");
+  if (!out) return out;
+  for (const { regex, mask } of SECRET_PATTERNS) {
+    out = out.replace(regex, mask);
+  }
+  return out;
+}
 function appendLogLine(logFile, message) {
-  const normalized = String(message ?? "").trim();
+  const normalized = scrubSecrets(String(message ?? "").trim());
   if (!logFile || !normalized) {
     return;
   }
@@ -1546,9 +1566,10 @@ function appendLogBlock(logFile, title, body) {
   if (!logFile || !body) {
     return;
   }
+  const scrubbedBody = scrubSecrets(String(body).trimEnd());
   fs7.appendFileSync(logFile, `
 [${nowIso2()}] ${title}
-${String(body).trimEnd()}
+${scrubbedBody}
 `, "utf8");
 }
 function createJobLogFile(workspaceRoot, jobId, title) {

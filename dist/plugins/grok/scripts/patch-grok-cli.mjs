@@ -11,10 +11,26 @@ var PATCH_MARKER = "/* ai-plugins-cc: live-search-off patched out */";
 var ORIGINAL_PATTERN = /requestPayload\.search_parameters = searchOptions\.search_parameters;/g;
 var CLIENT_RELATIVE = path.join("dist", "grok", "client.js");
 var PACKAGE_FOLDER = path.join("@vibe-kit", "grok-cli");
+var MAX_BINARY_WALK_UP = 3;
 function tryResolveGrokBinary() {
   if (process.env.GROK_BIN) {
     const explicit = path.resolve(process.env.GROK_BIN);
-    if (fs.existsSync(explicit)) return explicit;
+    let lstat;
+    try {
+      lstat = fs.lstatSync(explicit);
+    } catch {
+      lstat = null;
+    }
+    if (lstat) {
+      if (lstat.isSymbolicLink()) {
+        process.stderr.write(
+          `grok-patch: refusing to follow GROK_BIN=${explicit} because it is a symlink. Set GROK_BIN to a real file path or unset it.
+`
+        );
+        return null;
+      }
+      return explicit;
+    }
   }
   try {
     const located = execFileSync("which", ["grok"], { encoding: "utf8" }).trim();
@@ -31,7 +47,7 @@ function tryClientPathFromBinary(binPath) {
     return null;
   }
   let dir = path.dirname(real);
-  for (let i = 0; i < 6; i += 1) {
+  for (let i = 0; i < MAX_BINARY_WALK_UP; i += 1) {
     const candidate = path.join(dir, CLIENT_RELATIVE);
     if (fs.existsSync(candidate)) return candidate;
     const parent = path.dirname(dir);
@@ -50,14 +66,33 @@ function tryClientPathFromNpmGlobal() {
   const candidate = path.join(root, PACKAGE_FOLDER, CLIENT_RELATIVE);
   return fs.existsSync(candidate) ? candidate : null;
 }
+function isPathInsideGrokCliPackage(clientPath) {
+  let real;
+  try {
+    real = fs.realpathSync(clientPath);
+  } catch {
+    return false;
+  }
+  const sep = path.sep;
+  const needle = `${sep}@vibe-kit${sep}grok-cli${sep}`;
+  return real.includes(needle);
+}
 function findClientPath() {
+  const candidates = [];
   const bin = tryResolveGrokBinary();
   if (bin) {
     const fromBinary = tryClientPathFromBinary(bin);
-    if (fromBinary) return { path: fromBinary, source: `grok binary (${bin})` };
+    if (fromBinary) candidates.push({ path: fromBinary, source: `grok binary (${bin})` });
   }
   const fromNpm = tryClientPathFromNpmGlobal();
-  if (fromNpm) return { path: fromNpm, source: "npm root -g" };
+  if (fromNpm) candidates.push({ path: fromNpm, source: "npm root -g" });
+  for (const candidate of candidates) {
+    if (isPathInsideGrokCliPackage(candidate.path)) return candidate;
+    process.stderr.write(
+      `grok-patch: ignoring candidate ${candidate.path} (resolved outside @vibe-kit/grok-cli \u2014 refusing to patch arbitrary files via ${candidate.source}).
+`
+    );
+  }
   throw new Error(
     `Could not locate @vibe-kit/grok-cli's client.js. Tried GROK_BIN, \`which grok\`, and \`npm root -g\`. Install Grok with \`npm install -g @vibe-kit/grok-cli\` and retry, or set GROK_BIN to an installed grok binary.`
   );
