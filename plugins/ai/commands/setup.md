@@ -43,7 +43,7 @@ If `loggedIn: false`, use `AskUserQuestion` (single choice) to pick the auth met
 
 Auth-path actions:
 - **OAuth (Google account)**: run `gemini auth login` via Bash. The CLI will print a URL or open a browser; tell the user to complete the flow there. The Bash subprocess blocks until the login completes — that's expected. Re-run verify after it returns. (Note: `gemini auth login` is the developer-CLI auth subcommand, distinct from the web app's sign-in at gemini.google.com.)
-- **API key**: ask for the key with `AskUserQuestion` (single text answer, treat the response as sensitive — do not echo). Tell the user to `export GEMINI_API_KEY=…` for the current session. Only modify their shell config (~/.zshrc, ~/.bashrc) if they explicitly request persistence.
+- **API key**: ask for the key with `AskUserQuestion` (single text answer, treat the response as sensitive — do not echo). Tell the user to `export GEMINI_API_KEY=…` for the current session. Only modify their shell config if they explicitly request persistence — and when they do, write to `~/.zshenv` (zsh) or `~/.bash_profile` (bash), **not** `~/.zshrc`. The `/ai:*` commands spawn non-interactive subprocesses; `~/.zshrc` is sourced for interactive shells only, so a key persisted there won't be visible to dispatch.
 - **Vertex**: instruct them to run `gcloud auth application-default login` in another terminal, come back, and acknowledge.
 - Re-run `verify --provider=gemini --json` after each path completes.
 
@@ -56,6 +56,11 @@ If `available: false`:
 - Run `npm install -g @vibe-kit/grok-cli` via Bash. This is a Node-compatible CLI (ESM with Ink for terminal UI). The binary it installs is `grok`.
 - **Avoid `grok-dev`**: that's a separate, Bun-targeted package that fails under plain Node with `Cannot find package "node:diagnostics_channel"`. If a previous install left `grok-dev` on PATH, suggest `npm uninstall -g grok-dev` first.
 - Surface install failures verbatim and stop this provider's flow on a non-zero exit.
+
+Then — **whether Grok was just installed or was already on PATH** — apply the live-search compatibility patch before verify:
+- Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/patch-grok-cli.mjs" --json`. The script is idempotent and safe on any state (`patched`, `already-patched`, `not-needed` are all OK).
+- Why this is necessary: `@vibe-kit/grok-cli`'s `client.js` sends a deprecated `search_parameters: { mode: "off" }` field on every chat call, which xAI rejects with `410 "Live search is deprecated"` for accounts without a Live Search license (i.e. most new teams). The patch removes the offending lines.
+- The patch must be re-applied after every `npm install -g @vibe-kit/grok-cli` upgrade, because `npm install` overwrites the file. Re-running `/ai:setup` is one way to do that.
 - Re-run `verify --provider=grok --json`.
 
 If `loggedIn: false`:

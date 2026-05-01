@@ -109,3 +109,21 @@ test("resolveCompareProviders: invalid id in workspace config errors loudly", ()
     /Provider "claude" \(from workspace-config\) is not registered/
   );
 });
+
+test("resolveCompareProviders: empty user-config array falls through to default", () => {
+  const cwd = makeTempDir();
+  const home = makeTempDir();
+  withUserConfig(home, { compareProviders: [] });
+  const result = resolveCompareProviders({ cwd, home });
+  assert.equal(result.source, "default-all");
+  assert.ok(result.providerIds.length > 0);
+});
+
+test("resolveCompareProviders: empty workspace-config array falls through to default", () => {
+  const cwd = makeTempDir();
+  const home = makeTempDir();
+  withWorkspaceConfig(cwd, { compareProviders: [] });
+  const result = resolveCompareProviders({ cwd, home });
+  assert.equal(result.source, "default-all");
+  assert.ok(result.providerIds.length > 0);
+});

@@ -73,13 +73,13 @@ export function resolveCompareProviders(options = {}) {
   const home = options.home ?? os.homedir();
 
   const fromCli = parseList(options.cliProviders);
-  if (fromCli) return validateList(fromCli, "cli-flag");
+  if (fromCli && fromCli.length > 0) return validateList(fromCli, "cli-flag");
 
   const fromWorkspace = readListFromConfig(path.join(cwd, WORKSPACE_CONFIG_PATH));
-  if (fromWorkspace) return validateList(fromWorkspace, "workspace-config");
+  if (fromWorkspace && fromWorkspace.length > 0) return validateList(fromWorkspace, "workspace-config");
 
   const fromUser = readListFromConfig(path.join(home, USER_CONFIG_PATH));
-  if (fromUser) return validateList(fromUser, "user-config");
+  if (fromUser && fromUser.length > 0) return validateList(fromUser, "user-config");
 
   return { providerIds: listProviders(), source: "default-all" };
 }

@@ -4,7 +4,11 @@ import process from "node:process";
 
 import { installCodexUpstream } from "@ai-plugins-cc/codex-adapter";
 
-import { dispatchToProvider, dispatchCompare } from "./lib/dispatch.mjs";
+import {
+  dispatchToProvider,
+  dispatchCompare,
+  mapUmbrellaCommandToProviderArgs
+} from "./lib/dispatch.mjs";
 import { resolveProvider, resolveCompareProviders } from "./lib/config.mjs";
 import { renderCompareReport } from "./lib/render-compare.mjs";
 import { listProviders, isProvider } from "./lib/providers.mjs";
@@ -32,7 +36,7 @@ const COMMANDS = new Set([
 function usage(stream = process.stderr) {
   stream.write(
     [
-      "Usage: ai-companion.mjs <command> [--provider=ID] [--providers=A,B,C] [--json] [...args]",
+      "Usage: ai-companion.mjs <command> [--provider=ID] [--providers=A,B,C] [--action=review|rescue|gater] [--json] [...args]",
       "Commands:",
       "  review | rescue | gater | compare      forward to one or many providers",
       "  setup [--json]                          aggregate status across providers",
@@ -42,6 +46,7 @@ function usage(stream = process.stderr) {
       "Examples:",
       "  ai-companion.mjs review --provider=gemini --scope=diff",
       "  ai-companion.mjs compare --providers=gemini,codex --scope=diff",
+      "  ai-companion.mjs compare --action=rescue \"investigate the auth flow\"",
       "  ai-companion.mjs setup --json",
       "  ai-companion.mjs verify --provider=gemini --json",
       "  ai-companion.mjs settings enable codex",
@@ -50,12 +55,15 @@ function usage(stream = process.stderr) {
   );
 }
 
+const COMPARE_ACTIONS = new Set(["review", "rescue", "gater"]);
+
 function parseUmbrellaArgs(argv) {
   const command = argv[0];
   const rest = argv.slice(1);
   const passthrough = [];
   let cliProvider = null;
   let cliProviders = null;
+  let cliAction = null;
   let json = false;
 
   for (const arg of rest) {
@@ -67,6 +75,10 @@ function parseUmbrellaArgs(argv) {
       cliProviders = arg.slice("--providers=".length);
       continue;
     }
+    if (arg.startsWith("--action=")) {
+      cliAction = arg.slice("--action=".length);
+      continue;
+    }
     if (arg === "--json") {
       json = true;
       passthrough.push(arg);
@@ -75,12 +87,12 @@ function parseUmbrellaArgs(argv) {
     passthrough.push(arg);
   }
 
-  return { command, cliProvider, cliProviders, json, passthrough };
+  return { command, cliProvider, cliProviders, cliAction, json, passthrough };
 }
 
 async function runSingle(command, parsed) {
   const { providerId, source } = resolveProvider({ cliProvider: parsed.cliProvider });
-  const args = [command, ...parsed.passthrough];
+  const args = mapUmbrellaCommandToProviderArgs(command, parsed.passthrough);
   const result = await dispatchToProvider(providerId, args);
 
   if (parsed.json) {
@@ -109,8 +121,16 @@ async function runSingle(command, parsed) {
 
 async function runCompare(parsed) {
   const { providerIds } = resolveCompareProviders({ cliProviders: parsed.cliProviders });
-  // Forward "review" to each provider for compare, plus pass-through args.
-  const args = ["review", ...parsed.passthrough];
+  // Default to fanning out a review; --action=rescue|gater lets the caller
+  // ask every provider to do the same investigation/gate-check instead.
+  const action = parsed.cliAction ?? "review";
+  if (!COMPARE_ACTIONS.has(action)) {
+    process.stderr.write(
+      `compare --action must be one of: ${[...COMPARE_ACTIONS].join(", ")}; got "${action}".\n`
+    );
+    process.exit(2);
+  }
+  const args = mapUmbrellaCommandToProviderArgs(action, parsed.passthrough);
   const results = await dispatchCompare(providerIds, args);
 
   if (parsed.json) {

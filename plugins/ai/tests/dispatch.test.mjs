@@ -1,8 +1,46 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { spawnInHouseCompanion } from "../scripts/lib/dispatch.mjs";
+import {
+  mapUmbrellaCommandToProviderArgs,
+  spawnInHouseCompanion
+} from "../scripts/lib/dispatch.mjs";
 import { writeFakeCompanion } from "./fake-companion.mjs";
+
+test("mapUmbrellaCommandToProviderArgs: review without focus stays as review", () => {
+  assert.deepEqual(
+    mapUmbrellaCommandToProviderArgs("review", ["--scope=diff", "--json"]),
+    ["review", "--scope=diff", "--json"]
+  );
+});
+
+test("mapUmbrellaCommandToProviderArgs: review with focus text routes to adversarial-review", () => {
+  assert.deepEqual(
+    mapUmbrellaCommandToProviderArgs("review", ["--scope=diff", "review the auth flow"]),
+    ["adversarial-review", "--scope=diff", "review the auth flow"]
+  );
+});
+
+test("mapUmbrellaCommandToProviderArgs: rescue routes to task", () => {
+  assert.deepEqual(
+    mapUmbrellaCommandToProviderArgs("rescue", ["investigate the bug"]),
+    ["task", "investigate the bug"]
+  );
+});
+
+test("mapUmbrellaCommandToProviderArgs: gater routes to adversarial-review", () => {
+  assert.deepEqual(
+    mapUmbrellaCommandToProviderArgs("gater", []),
+    ["adversarial-review"]
+  );
+});
+
+test("mapUmbrellaCommandToProviderArgs: unknown commands forward unchanged", () => {
+  assert.deepEqual(
+    mapUmbrellaCommandToProviderArgs("setup", ["--json"]),
+    ["setup", "--json"]
+  );
+});
 
 test("spawnInHouseCompanion captures stdout and reports status=0 on success", async () => {
   const { companionPath } = writeFakeCompanion();

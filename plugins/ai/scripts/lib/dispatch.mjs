@@ -6,6 +6,41 @@ import { getProvider } from "./providers.mjs";
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
+ * Translate an umbrella command (review/rescue/gater) into the actual
+ * companion subcommand. Every provider companion (gemini, grok, upstream
+ * codex) ships the same surface — `review`, `adversarial-review`, `task`,
+ * `setup`, etc. — but never `rescue` or `gater`. The umbrella accepts
+ * those names as user-facing verbs and rewrites them here.
+ *
+ *   review  + no focus  → review               (built-in diff reviewer)
+ *   review  + focus     → adversarial-review   (focus-aware reviewer)
+ *   rescue              → task                 (delegated investigation)
+ *   gater               → adversarial-review   (stop-gate reviewer)
+ *
+ * Anything else is forwarded unchanged so `setup --json`, `verify`, and
+ * provider-native subcommands (e.g. `task`, `status`) still work.
+ */
+export function mapUmbrellaCommandToProviderArgs(command, passthrough = []) {
+  const args = Array.isArray(passthrough) ? [...passthrough] : [];
+  const hasFocusText = args.some((a) => typeof a === "string" && !a.startsWith("--"));
+  if (command === "review") {
+    return [hasFocusText ? "adversarial-review" : "review", ...args];
+  }
+  if (command === "rescue") return ["task", ...args];
+  if (command === "gater") return ["adversarial-review", ...args];
+  return [command, ...args];
+}
+
+function defaultEnvForProvider(providerId) {
+  // Gemini's CLI refuses to run in a workspace it has not previously
+  // "trusted" unless GEMINI_CLI_TRUST_WORKSPACE=true is set. Headless
+  // dispatch from /ai:* commands always has a fresh subprocess env, so
+  // we opt in by default. Callers can override via options.env.
+  if (providerId === "gemini") return { GEMINI_CLI_TRUST_WORKSPACE: "true" };
+  return {};
+}
+
+/**
  * Dispatch a command (review/rescue/gater plus its arguments) to a single
  * provider. Returns a uniform shape regardless of whether the provider is
  * an in-house companion subprocess or the codex-adapter:
@@ -14,11 +49,12 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
  */
 export async function dispatchToProvider(providerId, providerArgs, options = {}) {
   const provider = getProvider(providerId);
+  const mergedEnv = { ...defaultEnvForProvider(providerId), ...(options.env ?? {}) };
   if (provider.kind === "external") {
     const result = await provider.invoke({
       args: providerArgs,
       cwd: options.cwd,
-      env: options.env,
+      env: mergedEnv,
       timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       stdoutCapBytes: options.stdoutCapBytes,
       stdin: options.stdin
@@ -39,7 +75,7 @@ export async function dispatchToProvider(providerId, providerArgs, options = {})
   return spawnInHouseCompanion(
     { id: provider.id, companionPath: provider.companionPath },
     providerArgs,
-    options
+    { ...options, env: mergedEnv }
   );
 }
 
