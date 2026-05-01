@@ -290,38 +290,55 @@ test("runGeminiTurn captures the full output even with a large final write", asy
   const workspace = makeTempDir();
   const transcriptPath = path.join(workspace, "t.json");
   const payload = "X".repeat(64 * 1024);
-  const result = await runGeminiTurn(workspace, {
-    prompt: `ECHO:${payload}`,
-    transcriptPath,
-    env
-  });
-  assert.equal(result.status, 0, result.error ?? result.stderr);
-  assert.equal(
-    result.finalMessage.length,
-    payload.length,
-    `expected ${payload.length} bytes captured, got ${result.finalMessage.length}`
-  );
+  const previousBin = process.env.GEMINI_BIN;
+  const previousPath = process.env.PATH;
+  process.env.PATH = env.PATH;
+  process.env.GEMINI_BIN = "gemini";
+  try {
+    const result = await runGeminiTurn(workspace, {
+      prompt: `ECHO:${payload}`,
+      transcriptPath,
+      env
+    });
+    assert.equal(result.status, 0, result.error ?? result.stderr);
+    assert.equal(
+      result.finalMessage.length,
+      payload.length,
+      `expected ${payload.length} bytes captured, got ${result.finalMessage.length}`
+    );
+  } finally {
+    process.env.PATH = previousPath;
+    if (previousBin === undefined) delete process.env.GEMINI_BIN; else process.env.GEMINI_BIN = previousBin;
+  }
 });
 
 test("runGeminiTurn invokes onChildPid with the spawned child's PID, not the caller's", async () => {
   const { env, fakeDir } = withFakeEnv();
   const workspace = makeTempDir();
   const transcriptPath = path.join(workspace, "transcript.json");
+  const previousBin = process.env.GEMINI_BIN;
+  const previousPath = process.env.PATH;
+  process.env.PATH = env.PATH;
+  process.env.GEMINI_BIN = "gemini";
+  try {
+    const captured = [];
+    const result = await runGeminiTurn(workspace, {
+      prompt: "ECHO:hello-world",
+      transcriptPath,
+      env,
+      onChildPid: (pid) => captured.push(pid)
+    });
 
-  const captured = [];
-  const result = await runGeminiTurn(workspace, {
-    prompt: "ECHO:hello-world",
-    transcriptPath,
-    env,
-    onChildPid: (pid) => captured.push(pid)
-  });
-
-  assert.equal(result.status, 0, "fake gemini should exit cleanly");
-  assert.equal(captured.length, 1, "onChildPid must fire exactly once per turn");
-  const [pid] = captured;
-  assert.equal(typeof pid, "number");
-  assert.notEqual(pid, process.pid, "captured PID must be the child's, not the test runner's");
-  assert.notEqual(pid, fakeDir, "sanity: pid is a number, not a path");
+    assert.equal(result.status, 0, "fake gemini should exit cleanly");
+    assert.equal(captured.length, 1, "onChildPid must fire exactly once per turn");
+    const [pid] = captured;
+    assert.equal(typeof pid, "number");
+    assert.notEqual(pid, process.pid, "captured PID must be the child's, not the test runner's");
+    assert.notEqual(pid, fakeDir, "sanity: pid is a number, not a path");
+  } finally {
+    process.env.PATH = previousPath;
+    if (previousBin === undefined) delete process.env.GEMINI_BIN; else process.env.GEMINI_BIN = previousBin;
+  }
 });
 
 test("companion task-resume-candidate reports no candidate on a fresh workspace", () => {
