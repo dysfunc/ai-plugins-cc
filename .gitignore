@@ -76,3 +76,7 @@ plugins/*/.generated/
 # Packaged tarballs
 *.tgz
 *.zip
+
+# Claude Code / AI plugin local state
+.claude/
+.grok/
