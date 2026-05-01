@@ -272,16 +272,47 @@ This is roughly what Phase 2 of the build looked like: `feat(grok): build grok p
 
 ### Releases
 
-Distribution is via the Claude Code marketplace (this repo's `.claude-plugin/marketplace.json`); npm publishing is intentionally not wired up. All workspace packages are marked `private: true` so accidental `npm publish` is rejected.
-
-Versioning uses [Changesets](https://github.com/changesets/changesets) for in-repo discipline (changelogs + lockstep package version bumps), not for publishing:
+Independent per-package versioning via [Changesets](https://github.com/changesets/changesets):
 
 ```sh
 npm run changeset            # create a changeset entry alongside your PR
 npm run changeset:version    # apply pending changesets, bump versions, update CHANGELOGs
+npm run changeset:publish    # publish to npm
 ```
 
-Provider plugins depend on `@ai-plugins-cc/core` via the workspace resolver (plain semver `*`). **Any PR that touches `packages/core/**` must include a changeset entry that references `@ai-plugins-cc/core`** — `scripts/check-core-changeset.mjs` enforces this in CI.
+Provider plugins depend on `@ai-plugins-cc/core` via plain semver (`*`); npm's workspace resolver wires them up locally and the published packages float against caret ranges. **Any PR that touches `packages/core/**` must include a changeset entry that references `@ai-plugins-cc/core`** — `scripts/check-core-changeset.mjs` enforces this in CI.
+
+The release workflow in `.github/workflows/ci.yml` runs Changesets' release action on `main`: it either opens a "Version Packages" PR consuming pending changesets, or publishes when that PR merges.
+
+### Publishing to npm
+
+Packages live under the `@ai-plugins-cc` scope and ship publicly. First-time setup:
+
+1. Register the `@ai-plugins-cc` scope on npm (one-time, free): https://www.npmjs.com/org/create
+2. Locally: `npm login` with the account that owns the org.
+3. In CI: add `NPM_TOKEN` as a repo secret. The release job in `.github/workflows/ci.yml` already references it.
+
+Each publishable `package.json` has `"publishConfig": { "access": "public" }` so the first publish doesn't fail with "402 Payment Required" (the default for scoped packages is `restricted`).
+
+To publish manually from a clean working tree:
+
+```sh
+npm run changeset            # create entries describing what changed
+npm run changeset:version    # bump versions + write CHANGELOGs
+git commit -am "chore: release"
+npm run changeset:publish    # publishes every package whose version was bumped
+```
+
+The five publishable packages:
+
+- `@ai-plugins-cc/core`
+- `@ai-plugins-cc/shared-prompts`
+- `@ai-plugins-cc/codex-adapter`
+- `@ai-plugins-cc/gemini`
+- `@ai-plugins-cc/grok`
+- `@ai-plugins-cc/ai`
+
+The root `@ai-plugins-cc/monorepo` package stays `private: true` and never publishes.
 
 ---
 

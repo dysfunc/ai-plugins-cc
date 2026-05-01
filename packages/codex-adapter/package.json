@@ -1,7 +1,7 @@
 {
   "name": "@ai-plugins-cc/codex-adapter",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "description": "Adapter that integrates with upstream openai/codex-plugin-cc: discovery, version pinning, subprocess invocation, output normalization.",
   "license": "Apache-2.0",
@@ -12,6 +12,9 @@
   },
   "homepage": "https://github.com/dysfunc/ai-plugins-cc#readme",
   "bugs": "https://github.com/dysfunc/ai-plugins-cc/issues",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=20.0.0"
   },
