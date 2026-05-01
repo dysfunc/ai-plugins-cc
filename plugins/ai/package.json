@@ -1,6 +1,6 @@
 {
   "name": "@ai-plugins-cc/ai",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": false,
   "type": "module",
   "description": "Umbrella Claude Code plugin: dispatches /ai:review|rescue|gater across codex, gemini, grok and adds /ai:compare for fan-out.",

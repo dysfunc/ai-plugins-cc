@@ -1,6 +1,6 @@
 {
   "name": "@ai-plugins-cc/gemini",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": false,
   "type": "module",
   "description": "Use Gemini from Claude Code to review code or delegate tasks.",

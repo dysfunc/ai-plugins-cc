@@ -1,4 +1,4 @@
-# Changelog
+# @ai-plugins-cc/grok
 
 ## 0.1.0
 
@@ -24,7 +24,3 @@
 - Updated dependencies
   - @ai-plugins-cc/core@0.1.0
   - @ai-plugins-cc/shared-prompts@0.1.0
-
-## 1.0.0
-
-- Initial version of the Gemini plugin for Claude Code

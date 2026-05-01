@@ -1,4 +1,4 @@
-# Changelog
+# @ai-plugins-cc/shared-prompts
 
 ## 0.1.0
 
@@ -17,14 +17,3 @@
   Other packages (`core`, `codex-adapter`, `shared-prompts`, `gemini`, `grok`) bump to `0.1.0` as part of the coordinated initial public release.
 
 - Translate umbrella verbs to per-provider companion subcommands so /ai:rescue and /ai:gater stop crashing with "Unknown subcommand" and /ai:compare with focus text stops 410'ing on codex. Mapping: review+focus → adversarial-review, rescue →
-
-### Patch Changes
-
-- Updated dependencies
-- Updated dependencies
-  - @ai-plugins-cc/core@0.1.0
-  - @ai-plugins-cc/shared-prompts@0.1.0
-
-## 1.0.0
-
-- Initial version of the Gemini plugin for Claude Code

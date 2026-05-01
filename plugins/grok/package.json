@@ -1,6 +1,6 @@
 {
   "name": "@ai-plugins-cc/grok",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": false,
   "type": "module",
   "description": "Use Grok from Claude Code to review code or delegate tasks.",
