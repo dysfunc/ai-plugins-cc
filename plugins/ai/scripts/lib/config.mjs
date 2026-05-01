@@ -62,11 +62,20 @@ function readProviderFromConfig(filePath) {
 /**
  * Resolve the list of providers to use for /ai:compare.
  *
- * Precedence:
- *   1. CLI flag (comma-separated) — options.cliProviders
- *   2. Workspace config { "compareProviders": [...] }
- *   3. User config { "compareProviders": [...] }
- *   4. Default: every registered provider
+ * Precedence (high → low):
+ *   1. CLI flag (comma-separated)             — options.cliProviders
+ *   2. Workspace `compareProviders` (explicit) — workspace .claude-plugin/ai.json
+ *   3. User `compareProviders` (explicit)      — ~/.claude/ai-plugins-cc.json
+ *   4. Workspace `enabledProviders` (fallback)
+ *   5. User `enabledProviders` (fallback)
+ *   6. Default: every registered provider
+ *
+ * Falling back to `enabledProviders` matters because /ai:setup persists
+ * which providers the user picked but only writes `compareProviders` if
+ * they explicitly run `settings set-compare`. Without this fallback,
+ * `/ai:compare` would fan out to every registered provider — including
+ * ones the user never enabled — and produce noisy failures (codex review
+ * of "I'm not authenticated", etc.).
  */
 export function resolveCompareProviders(options = {}) {
   const cwd = options.cwd ?? process.cwd();
@@ -75,11 +84,24 @@ export function resolveCompareProviders(options = {}) {
   const fromCli = parseList(options.cliProviders);
   if (fromCli && fromCli.length > 0) return validateList(fromCli, "cli-flag");
 
-  const fromWorkspace = readListFromConfig(path.join(cwd, WORKSPACE_CONFIG_PATH));
-  if (fromWorkspace && fromWorkspace.length > 0) return validateList(fromWorkspace, "workspace-config");
+  const workspacePath = path.join(cwd, WORKSPACE_CONFIG_PATH);
+  const userPath = path.join(home, USER_CONFIG_PATH);
 
-  const fromUser = readListFromConfig(path.join(home, USER_CONFIG_PATH));
-  if (fromUser && fromUser.length > 0) return validateList(fromUser, "user-config");
+  const fromWorkspaceCompare = readListFromConfig(workspacePath, "compareProviders");
+  if (fromWorkspaceCompare && fromWorkspaceCompare.length > 0)
+    return validateList(fromWorkspaceCompare, "workspace-compare");
+
+  const fromUserCompare = readListFromConfig(userPath, "compareProviders");
+  if (fromUserCompare && fromUserCompare.length > 0)
+    return validateList(fromUserCompare, "user-compare");
+
+  const fromWorkspaceEnabled = readListFromConfig(workspacePath, "enabledProviders");
+  if (fromWorkspaceEnabled && fromWorkspaceEnabled.length > 0)
+    return validateList(fromWorkspaceEnabled, "workspace-enabled");
+
+  const fromUserEnabled = readListFromConfig(userPath, "enabledProviders");
+  if (fromUserEnabled && fromUserEnabled.length > 0)
+    return validateList(fromUserEnabled, "user-enabled");
 
   return { providerIds: listProviders(), source: "default-all" };
 }
@@ -90,10 +112,10 @@ function parseList(value) {
   return String(value).split(",").map((s) => s.trim()).filter(Boolean);
 }
 
-function readListFromConfig(filePath) {
+function readListFromConfig(filePath, key) {
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    if (Array.isArray(parsed?.compareProviders)) return parsed.compareProviders;
+    if (Array.isArray(parsed?.[key])) return parsed[key];
     return null;
   } catch {
     return null;

@@ -42,6 +42,48 @@ test("mapUmbrellaCommandToProviderArgs: unknown commands forward unchanged", () 
   );
 });
 
+test("mapUmbrellaCommandToProviderArgs: --scope <value> does not look like focus text", () => {
+  assert.deepEqual(
+    mapUmbrellaCommandToProviderArgs("review", ["--scope", "diff"]),
+    ["review", "--scope", "diff"]
+  );
+});
+
+test("mapUmbrellaCommandToProviderArgs: --base <value> does not look like focus text", () => {
+  assert.deepEqual(
+    mapUmbrellaCommandToProviderArgs("review", ["--base", "main"]),
+    ["review", "--base", "main"]
+  );
+});
+
+test("mapUmbrellaCommandToProviderArgs: -m <value> does not look like focus text", () => {
+  assert.deepEqual(
+    mapUmbrellaCommandToProviderArgs("review", ["-m", "flash"]),
+    ["review", "-m", "flash"]
+  );
+});
+
+test("mapUmbrellaCommandToProviderArgs: --scope=value inline form is unchanged", () => {
+  assert.deepEqual(
+    mapUmbrellaCommandToProviderArgs("review", ["--scope=diff"]),
+    ["review", "--scope=diff"]
+  );
+});
+
+test("mapUmbrellaCommandToProviderArgs: option flags + real focus text routes to adversarial-review", () => {
+  assert.deepEqual(
+    mapUmbrellaCommandToProviderArgs("review", ["--scope", "diff", "review the auth flow"]),
+    ["adversarial-review", "--scope", "diff", "review the auth flow"]
+  );
+});
+
+test("mapUmbrellaCommandToProviderArgs: positional after `--` is focus text", () => {
+  assert.deepEqual(
+    mapUmbrellaCommandToProviderArgs("review", ["--", "look here"]),
+    ["adversarial-review", "--", "look here"]
+  );
+});
+
 test("spawnInHouseCompanion captures stdout and reports status=0 on success", async () => {
   const { companionPath } = writeFakeCompanion();
   const result = await spawnInHouseCompanion(

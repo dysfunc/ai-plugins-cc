@@ -4,6 +4,93 @@ import process from "node:process";
 import { getProvider } from "./providers.mjs";
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_STDOUT_CAP = 50 * 1024 * 1024;
+const DEFAULT_STDERR_CAP = 10 * 1024 * 1024;
+
+/**
+ * Send `signal` to the process group `child` belongs to, falling back to
+ * killing only `child` if the group send fails (which happens on platforms
+ * where the child wasn't spawned with `detached: true`, or when the group
+ * already exited). Mirrors the trick `npm`, `pnpm`, `lerna` and friends use
+ * to clean up subtrees.
+ */
+function killProcessTree(child, signal = "SIGKILL") {
+  if (!child || typeof child.pid !== "number") return;
+  try {
+    // Negative pid → the whole process group (when spawned detached).
+    process.kill(-child.pid, signal);
+    return;
+  } catch {
+    // group send failed — fall through to direct kill
+  }
+  try {
+    child.kill(signal);
+  } catch {
+    // already gone
+  }
+}
+
+// Union of every value-taking option the provider companions accept across
+// their subcommands (review/adversarial-review/task/status/result/cancel/
+// task-worker/setup). Without this set, "focus text" detection would
+// misclassify the value half of `--scope diff` as a positional argument
+// and silently route /ai:review to adversarial-review — see the codex+gemini
+// review consensus on this regression.
+const VALUE_OPTION_LONG_KEYS = new Set([
+  "base",
+  "scope",
+  "model",
+  "cwd",
+  "prompt-file",
+  "dirs",
+  "files",
+  "max-files",
+  "max-file-bytes",
+  "timeout-ms",
+  "poll-interval-ms",
+  "job-id"
+]);
+
+// Short-form aliases used by the same set of companions (`-m` → `--model`,
+// `-C` → `--cwd`). Anything not listed is treated as a boolean short flag.
+const SHORT_OPTION_ALIASES = new Map([
+  ["m", "model"],
+  ["C", "cwd"]
+]);
+
+/**
+ * Walk a passthrough argv and return true iff there is at least one true
+ * positional argument (i.e. focus text). Skips the values of known value-
+ * taking options so `--scope diff` and `-m flash` don't get misread as
+ * positionals.
+ */
+function hasPositionalFocusText(args) {
+  for (let i = 0; i < args.length; i += 1) {
+    const token = args[i];
+    if (typeof token !== "string") continue;
+    if (token === "--") {
+      // Everything after `--` is a positional; if any exists, that's focus text.
+      return i + 1 < args.length;
+    }
+    if (token.startsWith("--")) {
+      const [key, inlineValue] = token.slice(2).split("=", 2);
+      if (inlineValue === undefined && VALUE_OPTION_LONG_KEYS.has(key)) {
+        i += 1; // skip the value half (lives in the next token)
+      }
+      continue;
+    }
+    if (token.startsWith("-") && token !== "-") {
+      const shortKey = token.slice(1);
+      const longKey = SHORT_OPTION_ALIASES.get(shortKey) ?? shortKey;
+      if (VALUE_OPTION_LONG_KEYS.has(longKey)) {
+        i += 1;
+      }
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
 
 /**
  * Translate an umbrella command (review/rescue/gater) into the actual
@@ -22,9 +109,8 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
  */
 export function mapUmbrellaCommandToProviderArgs(command, passthrough = []) {
   const args = Array.isArray(passthrough) ? [...passthrough] : [];
-  const hasFocusText = args.some((a) => typeof a === "string" && !a.startsWith("--"));
   if (command === "review") {
-    return [hasFocusText ? "adversarial-review" : "review", ...args];
+    return [hasPositionalFocusText(args) ? "adversarial-review" : "review", ...args];
   }
   if (command === "rescue") return ["task", ...args];
   if (command === "gater") return ["adversarial-review", ...args];
@@ -41,11 +127,33 @@ function defaultEnvForProvider(providerId) {
 }
 
 /**
+ * Build a streaming sink that splits incoming stderr chunks on newlines and
+ * writes each line to `dest`, prefixed with `prefix`. Companions emit live
+ * progress to stderr — piping it through gives the user mid-flight feedback
+ * during long-running compares instead of a blank screen for ~10 minutes.
+ */
+export function makeStderrLineStreamer(prefix, dest = process.stderr) {
+  let buf = "";
+  return (chunk) => {
+    buf += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl);
+      buf = buf.slice(nl + 1);
+      if (line.length > 0) dest.write(`${prefix}${line}\n`);
+    }
+  };
+}
+
+/**
  * Dispatch a command (review/rescue/gater plus its arguments) to a single
  * provider. Returns a uniform shape regardless of whether the provider is
  * an in-house companion subprocess or the codex-adapter:
  *
  *   { providerId, status, stdout, stderr, signal, error, timedOut }
+ *
+ * Pass `options.onStderrChunk(chunk)` to stream the child's stderr live as
+ * each buffer arrives. Captured stderr is still returned in the result.
  */
 export async function dispatchToProvider(providerId, providerArgs, options = {}) {
   const provider = getProvider(providerId);
@@ -57,7 +165,8 @@ export async function dispatchToProvider(providerId, providerArgs, options = {})
       env: mergedEnv,
       timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       stdoutCapBytes: options.stdoutCapBytes,
-      stdin: options.stdin
+      stdin: options.stdin,
+      onStderr: options.onStderrChunk
     });
     return {
       providerId,
@@ -87,6 +196,8 @@ export async function dispatchToProvider(providerId, providerArgs, options = {})
  */
 export function spawnInHouseCompanion(provider, providerArgs, options = {}) {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const stdoutCap = options.stdoutCapBytes ?? DEFAULT_STDOUT_CAP;
+  const stderrCap = options.stderrCapBytes ?? DEFAULT_STDERR_CAP;
   const args = Array.isArray(providerArgs) ? providerArgs : [];
   const env = { ...process.env, ...(options.env ?? {}) };
 
@@ -94,6 +205,10 @@ export function spawnInHouseCompanion(provider, providerArgs, options = {}) {
     const child = spawn(process.execPath, [provider.companionPath, ...args], {
       cwd: options.cwd ?? process.cwd(),
       env,
+      // `detached: true` makes the child a process group leader so we can
+      // kill the whole tree on timeout/cap-overrun. stdio stays piped to
+      // the parent so capture still works.
+      detached: true,
       stdio: [options.stdin == null ? "ignore" : "pipe", "pipe", "pipe"]
     });
 
@@ -103,15 +218,37 @@ export function spawnInHouseCompanion(provider, providerArgs, options = {}) {
 
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString("utf8"); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+    let stdoutOverrun = false;
+    let stderrOverrun = false;
+    const onStderrChunk = typeof options.onStderrChunk === "function" ? options.onStderrChunk : null;
+
+    child.stdout.on("data", (chunk) => {
+      if (stdoutOverrun) return;
+      stdout += chunk.toString("utf8");
+      if (stdout.length > stdoutCap) {
+        stdoutOverrun = true;
+        killProcessTree(child);
+      }
+    });
+    child.stderr.on("data", (chunk) => {
+      if (!stderrOverrun) {
+        stderr += chunk.toString("utf8");
+        if (stderr.length > stderrCap) {
+          stderrOverrun = true;
+          killProcessTree(child);
+        }
+      }
+      // Pass the chunk through even after cap so live progress keeps flowing
+      // to the user — only the captured copy is bounded.
+      if (onStderrChunk) onStderrChunk(chunk);
+    });
 
     let timedOut = false;
     let timer = null;
     if (timeoutMs > 0) {
       timer = setTimeout(() => {
         timedOut = true;
-        try { child.kill("SIGKILL"); } catch (_) { /* already gone */ }
+        killProcessTree(child);
       }, timeoutMs);
     }
 
@@ -119,6 +256,7 @@ export function spawnInHouseCompanion(provider, providerArgs, options = {}) {
       if (timer) clearTimeout(timer);
       let status;
       if (timedOut) status = 124;
+      else if (stdoutOverrun || stderrOverrun) status = 137;
       else if (code === 0) status = 0;
       else status = code ?? 1;
       resolve({
@@ -129,7 +267,7 @@ export function spawnInHouseCompanion(provider, providerArgs, options = {}) {
         signal: signal ?? null,
         error: null,
         timedOut,
-        stdoutOverrun: false
+        stdoutOverrun
       });
     });
     child.on("error", (err) => {
@@ -142,7 +280,7 @@ export function spawnInHouseCompanion(provider, providerArgs, options = {}) {
         signal: null,
         error: String(err),
         timedOut,
-        stdoutOverrun: false
+        stdoutOverrun
       });
     });
   });
@@ -152,10 +290,19 @@ export function spawnInHouseCompanion(provider, providerArgs, options = {}) {
  * Fan out the same command to multiple providers in parallel. Each provider
  * runs independently; one failure does not abort the others. Returns a list
  * of dispatch results in the same order as providerIds.
+ *
+ * Pass `options.onStderrChunkFor(providerId) → onStderrChunk` to stream each
+ * provider's stderr live, with caller-controlled per-provider prefixing.
  */
 export async function dispatchCompare(providerIds, providerArgs, options = {}) {
+  const onStderrChunkFor = typeof options.onStderrChunkFor === "function" ? options.onStderrChunkFor : null;
   const settled = await Promise.allSettled(
-    providerIds.map((id) => dispatchToProvider(id, providerArgs, options))
+    providerIds.map((id) => {
+      const perProviderOptions = onStderrChunkFor
+        ? { ...options, onStderrChunk: onStderrChunkFor(id) }
+        : options;
+      return dispatchToProvider(id, providerArgs, perProviderOptions);
+    })
   );
   return settled.map((entry, index) => {
     if (entry.status === "fulfilled") return entry.value;

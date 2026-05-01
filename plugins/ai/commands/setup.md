@@ -58,7 +58,7 @@ If `available: false`:
 - Surface install failures verbatim and stop this provider's flow on a non-zero exit.
 
 Then — **whether Grok was just installed or was already on PATH** — apply the live-search compatibility patch before verify:
-- Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/patch-grok-cli.mjs" --json`. The script is idempotent and safe on any state (`patched`, `already-patched`, `not-needed` are all OK).
+- Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/ai-companion.mjs" grok-patch --json`. The umbrella locates the grok plugin's patch script (`plugins/grok/scripts/patch-grok-cli.mjs`) and runs it. The script is idempotent (`patched` and `already-patched` are both OK) but **fails closed** if the expected pattern isn't found in the installed grok-cli — that's a signal that upstream may have updated and the patch may no longer be needed.
 - Why this is necessary: `@vibe-kit/grok-cli`'s `client.js` sends a deprecated `search_parameters: { mode: "off" }` field on every chat call, which xAI rejects with `410 "Live search is deprecated"` for accounts without a Live Search license (i.e. most new teams). The patch removes the offending lines.
 - The patch must be re-applied after every `npm install -g @vibe-kit/grok-cli` upgrade, because `npm install` overwrites the file. Re-running `/ai:setup` is one way to do that.
 - Re-run `verify --provider=grok --json`.

@@ -9,7 +9,10 @@
 //     "compareProviders": ["gemini", "grok"]   // ordering used by /ai:compare default fan-out
 //   }
 //
-// Every mutation writes via temp file + rename for atomicity.
+// Every mutation goes through `withLock` (advisory lock file with stale-PID
+// detection) followed by an atomic temp + rename. /ai:setup and /ai:settings
+// frequently run in quick succession from different subprocesses, and read-
+// modify-write semantics need to be serialized across them.
 
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -20,9 +23,90 @@ import { isProvider, listProviders } from "./providers.mjs";
 
 const USER_CONFIG_DIR = path.join(".claude");
 const USER_CONFIG_FILE = "ai-plugins-cc.json";
+const LOCK_TIMEOUT_MS = 10_000;
+const LOCK_RETRY_DELAY_MS = 50;
+const LOCK_STALE_MS = 30_000;
 
 export function defaultUserConfigPath(home = os.homedir()) {
   return path.join(home, USER_CONFIG_DIR, USER_CONFIG_FILE);
+}
+
+function lockFilePath(filePath) {
+  return `${filePath}.lock`;
+}
+
+function tryAcquireLock(lockFile) {
+  let fd;
+  try {
+    fd = fs.openSync(lockFile, "wx");
+  } catch (err) {
+    if (err.code === "EEXIST") return false;
+    throw err;
+  }
+  try {
+    fs.writeSync(fd, JSON.stringify({ pid: process.pid, acquiredAt: Date.now() }));
+  } finally {
+    fs.closeSync(fd);
+  }
+  return true;
+}
+
+function isStaleLock(lockFile) {
+  let stat;
+  try {
+    stat = fs.statSync(lockFile);
+  } catch {
+    return true;
+  }
+  if (Date.now() - stat.mtimeMs < LOCK_STALE_MS) return false;
+  let meta;
+  try {
+    meta = JSON.parse(fs.readFileSync(lockFile, "utf8"));
+  } catch {
+    return true;
+  }
+  if (typeof meta?.pid !== "number") return true;
+  if (meta.pid === process.pid) return false;
+  try {
+    process.kill(meta.pid, 0); // signal 0 → existence check
+    return false;
+  } catch (err) {
+    return err.code === "ESRCH";
+  }
+}
+
+function syncSleep(ms) {
+  const end = Date.now() + ms;
+  // eslint-disable-next-line no-empty
+  while (Date.now() < end) {}
+}
+
+function acquireLock(filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const lockFile = lockFilePath(filePath);
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (tryAcquireLock(lockFile)) return lockFile;
+    if (isStaleLock(lockFile)) {
+      try { fs.unlinkSync(lockFile); } catch { /* raced with another waiter */ }
+      continue;
+    }
+    syncSleep(LOCK_RETRY_DELAY_MS);
+  }
+  throw new Error(`Timed out acquiring settings lock at ${lockFile}`);
+}
+
+function releaseLock(lockFile) {
+  try { fs.unlinkSync(lockFile); } catch { /* already gone */ }
+}
+
+function withLock(filePath, fn) {
+  const lockFile = acquireLock(filePath);
+  try {
+    return fn();
+  } finally {
+    releaseLock(lockFile);
+  }
 }
 
 export function readSettings(home = os.homedir()) {
@@ -38,6 +122,10 @@ export function readSettings(home = os.homedir()) {
 
 export function writeSettings(settings, home = os.homedir()) {
   const filePath = defaultUserConfigPath(home);
+  return withLock(filePath, () => writeSettingsUnlocked(filePath, settings));
+}
+
+function writeSettingsUnlocked(filePath, settings) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const normalized = normalizeSettings(settings);
   const suffix = `${process.pid}.${randomBytes(4).toString("hex")}`;
@@ -47,50 +135,75 @@ export function writeSettings(settings, home = os.homedir()) {
   return { filePath, settings: normalized };
 }
 
+function readSettingsUnlocked(filePath) {
+  if (!fs.existsSync(filePath)) return defaultSettings();
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return normalizeSettings(parsed);
+  } catch {
+    return defaultSettings();
+  }
+}
+
+/**
+ * Lock once around the read-modify-write for every settings mutation. Without
+ * this, two concurrent /ai:settings invocations could each load the same
+ * snapshot and one would silently overwrite the other.
+ */
+function mutateSettings(home, mutator) {
+  const filePath = defaultUserConfigPath(home);
+  return withLock(filePath, () => {
+    const current = readSettingsUnlocked(filePath);
+    const next = mutator(current);
+    return writeSettingsUnlocked(filePath, next);
+  });
+}
+
 export function enableProvider(id, home = os.homedir()) {
   assertKnownProvider(id);
-  const current = readSettings(home);
-  const enabled = new Set(current.enabledProviders);
-  enabled.add(id);
-  const next = { ...current, enabledProviders: orderedList(enabled) };
-  return writeSettings(next, home);
+  return mutateSettings(home, (current) => {
+    const enabled = new Set(current.enabledProviders);
+    enabled.add(id);
+    return { ...current, enabledProviders: orderedList(enabled) };
+  });
 }
 
 export function disableProvider(id, home = os.homedir()) {
   assertKnownProvider(id);
-  const current = readSettings(home);
-  const enabled = new Set(current.enabledProviders);
-  enabled.delete(id);
-  const compare = current.compareProviders.filter((p) => p !== id);
-  let provider = current.provider;
-  if (provider === id) provider = orderedList(enabled)[0] ?? null;
-  const next = {
-    ...current,
-    provider,
-    enabledProviders: orderedList(enabled),
-    compareProviders: compare
-  };
-  return writeSettings(next, home);
+  return mutateSettings(home, (current) => {
+    const enabled = new Set(current.enabledProviders);
+    enabled.delete(id);
+    const compare = current.compareProviders.filter((p) => p !== id);
+    let provider = current.provider;
+    if (provider === id) provider = orderedList(enabled)[0] ?? null;
+    return {
+      ...current,
+      provider,
+      enabledProviders: orderedList(enabled),
+      compareProviders: compare
+    };
+  });
 }
 
 export function setDefaultProvider(id, home = os.homedir()) {
   assertKnownProvider(id);
-  const current = readSettings(home);
-  const enabled = new Set(current.enabledProviders);
-  enabled.add(id);
-  const next = {
-    ...current,
-    provider: id,
-    enabledProviders: orderedList(enabled)
-  };
-  return writeSettings(next, home);
+  return mutateSettings(home, (current) => {
+    const enabled = new Set(current.enabledProviders);
+    enabled.add(id);
+    return {
+      ...current,
+      provider: id,
+      enabledProviders: orderedList(enabled)
+    };
+  });
 }
 
 export function setCompareProviders(ids, home = os.homedir()) {
   for (const id of ids) assertKnownProvider(id);
-  const current = readSettings(home);
-  const next = { ...current, compareProviders: [...ids] };
-  return writeSettings(next, home);
+  return mutateSettings(home, (current) => ({
+    ...current,
+    compareProviders: [...ids]
+  }));
 }
 
 function defaultSettings() {

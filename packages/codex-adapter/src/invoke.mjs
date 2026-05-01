@@ -41,6 +41,9 @@ function filteredEnv(extra = {}) {
  *   - stdoutCapBytes: kill the process if stdout exceeds this (default 50MB)
  *   - stdin:       optional string to pipe to the child
  *   - install:     pre-resolved discoverCodexInstall() result; if absent, discover
+ *   - onStderr:    optional fn(chunk) called for each stderr buffer; useful for
+ *                  streaming progress to the parent. Captured stderr is still
+ *                  returned in the result regardless.
  */
 export async function invokeCodexCommand(options = {}) {
   const install = options.install ?? discoverCodexInstall(options.discover ?? {});
@@ -69,8 +72,10 @@ export async function invokeCodexCommand(options = {}) {
       try { child.kill("SIGKILL"); } catch (_) { /* already gone */ }
     }
   });
+  const onStderr = typeof options.onStderr === "function" ? options.onStderr : null;
   child.stderr.on("data", (chunk) => {
     stderr += chunk.toString("utf8");
+    if (onStderr) onStderr(chunk);
   });
 
   let timedOut = false;

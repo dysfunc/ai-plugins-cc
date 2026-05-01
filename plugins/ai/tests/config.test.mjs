@@ -106,7 +106,7 @@ test("resolveCompareProviders: invalid id in workspace config errors loudly", ()
 
   assert.throws(
     () => resolveCompareProviders({ cwd, home }),
-    /Provider "claude" \(from workspace-config\) is not registered/
+    /Provider "claude" \(from workspace-compare\) is not registered/
   );
 });
 
@@ -126,4 +126,35 @@ test("resolveCompareProviders: empty workspace-config array falls through to def
   const result = resolveCompareProviders({ cwd, home });
   assert.equal(result.source, "default-all");
   assert.ok(result.providerIds.length > 0);
+});
+
+test("resolveCompareProviders: empty compareProviders falls through to user enabledProviders, not all-registered", () => {
+  const cwd = makeTempDir();
+  const home = makeTempDir();
+  withUserConfig(home, { enabledProviders: ["gemini", "codex"], compareProviders: [] });
+  const result = resolveCompareProviders({ cwd, home });
+  assert.equal(result.source, "user-enabled");
+  assert.deepEqual(result.providerIds, ["gemini", "codex"]);
+});
+
+test("resolveCompareProviders: workspace enabledProviders beats user enabledProviders", () => {
+  const cwd = makeTempDir();
+  const home = makeTempDir();
+  withWorkspaceConfig(cwd, { enabledProviders: ["grok"] });
+  withUserConfig(home, { enabledProviders: ["gemini", "codex"] });
+  const result = resolveCompareProviders({ cwd, home });
+  assert.equal(result.source, "workspace-enabled");
+  assert.deepEqual(result.providerIds, ["grok"]);
+});
+
+test("resolveCompareProviders: explicit compareProviders still wins over enabledProviders", () => {
+  const cwd = makeTempDir();
+  const home = makeTempDir();
+  withUserConfig(home, {
+    enabledProviders: ["gemini", "grok", "codex"],
+    compareProviders: ["gemini"]
+  });
+  const result = resolveCompareProviders({ cwd, home });
+  assert.equal(result.source, "user-compare");
+  assert.deepEqual(result.providerIds, ["gemini"]);
 });

@@ -4,11 +4,16 @@ import process from "node:process";
 
 import { installCodexUpstream } from "@ai-plugins-cc/codex-adapter";
 
+import path from "node:path";
+import { spawn } from "node:child_process";
+
 import {
   dispatchToProvider,
   dispatchCompare,
+  makeStderrLineStreamer,
   mapUmbrellaCommandToProviderArgs
 } from "./lib/dispatch.mjs";
+import { resolveSiblingCompanionPath, SiblingPluginMissingError } from "./lib/providers.mjs";
 import { resolveProvider, resolveCompareProviders } from "./lib/config.mjs";
 import { renderCompareReport } from "./lib/render-compare.mjs";
 import { listProviders, isProvider } from "./lib/providers.mjs";
@@ -28,6 +33,7 @@ const COMMANDS = new Set([
   "gater",
   "compare",
   "codex-update",
+  "grok-patch",
   "setup",
   "verify",
   "settings"
@@ -43,6 +49,7 @@ function usage(stream = process.stderr) {
       "  verify --provider=ID [--json]           probe one provider",
       "  settings show|enable|disable|...        manage ~/.claude/ai-plugins-cc.json",
       "  codex-update [--tag=vX.Y.Z] [--pin]      install pinned upstream codex",
+      "  grok-patch [--json]                     run @ai-plugins-cc/grok's patch-grok-cli.mjs",
       "Examples:",
       "  ai-companion.mjs review --provider=gemini --scope=diff",
       "  ai-companion.mjs compare --providers=gemini,codex --scope=diff",
@@ -131,7 +138,15 @@ async function runCompare(parsed) {
     process.exit(2);
   }
   const args = mapUmbrellaCommandToProviderArgs(action, parsed.passthrough);
-  const results = await dispatchCompare(providerIds, args);
+
+  // For non-JSON output, stream each provider's stderr live so the user
+  // sees per-provider progress instead of a 5-10 minute blank wait. Codex
+  // adversarial reviews routinely take that long; gemini and grok emit
+  // turn-level milestones via their tracked-job progress reporter.
+  const compareOptions = parsed.json
+    ? {}
+    : { onStderrChunkFor: (id) => makeStderrLineStreamer(`[${id}] `, process.stderr) };
+  const results = await dispatchCompare(providerIds, args, compareOptions);
 
   if (parsed.json) {
     process.stdout.write(`${JSON.stringify({ providers: providerIds, results }, null, 2)}\n`);
@@ -142,6 +157,43 @@ async function runCompare(parsed) {
   // Exit non-zero only if every provider failed; partial success is success.
   const anyOk = results.some((r) => r.status === 0);
   process.exit(anyOk ? 0 : 1);
+}
+
+async function runGrokPatch(argv) {
+  // Locate the grok plugin's patch script relative to its companion. The
+  // umbrella owns the user-facing surface (/ai:setup), but the actual fix
+  // for the @vibe-kit/grok-cli `search_parameters` bug lives in the grok
+  // plugin so it can travel with grok and be re-applied if grok is
+  // installed standalone.
+  let scriptPath;
+  try {
+    const companion = resolveSiblingCompanionPath("grok");
+    scriptPath = path.join(path.dirname(companion), "patch-grok-cli.mjs");
+  } catch (err) {
+    if (err instanceof SiblingPluginMissingError) {
+      process.stderr.write(
+        `${err.message}\n` +
+          `(grok-patch needs the grok plugin's patch-grok-cli.mjs script.)\n`
+      );
+      process.exit(2);
+    }
+    throw err;
+  }
+
+  const args = argv.slice(1);
+  const child = spawn(process.execPath, [scriptPath, ...args], {
+    stdio: "inherit"
+  });
+  await new Promise((resolve) => {
+    child.on("close", (code) => {
+      process.exit(code ?? 1);
+    });
+    child.on("error", (err) => {
+      process.stderr.write(`grok-patch: ${err.message}\n`);
+      resolve();
+      process.exit(1);
+    });
+  });
 }
 
 async function runCodexUpdate(argv) {
@@ -342,6 +394,7 @@ async function main() {
   }
 
   if (command === "codex-update") return runCodexUpdate(argv);
+  if (command === "grok-patch") return runGrokPatch(argv);
   if (command === "setup") return runSetup(argv);
   if (command === "verify") return runVerify(argv);
   if (command === "settings") return runSettings(argv);

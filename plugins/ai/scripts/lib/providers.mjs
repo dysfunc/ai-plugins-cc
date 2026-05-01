@@ -48,29 +48,51 @@ function firstExisting(candidates) {
 
 /**
  * Find a sibling provider's companion script without depending on a workspace
- * symlink. Returns an absolute path; throws if none of the candidate locations
- * contain the file (caller decides how to surface).
+ * symlink. Returns an absolute path; throws SiblingPluginMissingError if none
+ * of the candidate locations contain the file. Callers should distinguish
+ * this from "the CLI is missing" — the right remediation is to install the
+ * sibling Claude plugin, not the underlying CLI.
+ *
+ * Candidate locations checked, in order:
+ *   1. Workspace dev clone:        <umbrella>/../<provider>/scripts/<provider>-companion.mjs
+ *   2. Versioned marketplace cache: <umbrella>/../../<provider>/<version>/scripts/...
+ *      (uses the highest version directory found)
  */
+export class SiblingPluginMissingError extends Error {
+  constructor(providerId, searchedPaths) {
+    super(
+      `Could not locate the ${providerId} companion script. The sibling ` +
+        `Claude plugin "${providerId}" does not appear to be installed. ` +
+        `Install it via /plugin install ${providerId}@ai-plugins-cc, ` +
+        `or run /ai:setup from a workspace clone.`
+    );
+    this.name = "SiblingPluginMissingError";
+    this.providerId = providerId;
+    this.searchedPaths = searchedPaths;
+  }
+}
+
 export function resolveSiblingCompanionPath(providerId) {
   const root = pluginRoot();
   const filename = `${providerId}-companion.mjs`;
   const relative = path.join("scripts", filename);
 
+  // Workspace dev clone: plugins/ai sits next to plugins/<provider>/.
   const devSibling = path.resolve(root, "..", providerId, relative);
+
+  // Marketplace cache: each plugin lives at <cache>/<marketplace>/<plugin>/<version>/.
+  // The umbrella is at <cache>/<marketplace>/ai/<version>/, so its sibling
+  // <provider> dir lives one level up from the umbrella's plugin dir, then
+  // a version subdirectory. We pick the highest version present.
   const marketplaceParent = path.resolve(root, "..", "..", providerId);
   const marketplaceVersioned = listVersionsDescending(marketplaceParent).map((version) =>
     path.join(marketplaceParent, version, relative)
   );
-  const marketplaceFlat = path.resolve(root, "..", providerId, relative);
 
-  const found = firstExisting([devSibling, marketplaceFlat, ...marketplaceVersioned]);
+  const candidates = [devSibling, ...marketplaceVersioned];
+  const found = firstExisting(candidates);
   if (!found) {
-    throw new Error(
-      `Could not locate the ${providerId} companion script (looked next to the umbrella ` +
-        `plugin at ${devSibling} and under ${marketplaceParent}). ` +
-        `Install the @ai-plugins-cc/${providerId} plugin via the marketplace, ` +
-        `or run /ai:setup from a workspace clone.`
-    );
+    throw new SiblingPluginMissingError(providerId, candidates);
   }
   return found;
 }

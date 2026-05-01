@@ -281,8 +281,10 @@ async function invokeCodexCommand(options = {}) {
       }
     }
   });
+  const onStderr = typeof options.onStderr === "function" ? options.onStderr : null;
   child.stderr.on("data", (chunk) => {
     stderr += chunk.toString("utf8");
+    if (onStderr) onStderr(chunk);
   });
   let timedOut = false;
   let timer = null;
@@ -317,6 +319,10 @@ async function invokeCodexCommand(options = {}) {
   };
 }
 
+// plugins/ai/scripts/ai-companion.mjs
+import path6 from "node:path";
+import { spawn as spawn4 } from "node:child_process";
+
 // plugins/ai/scripts/lib/dispatch.mjs
 import { spawn as spawn3 } from "node:child_process";
 import process6 from "node:process";
@@ -343,6 +349,16 @@ function firstExisting(candidates) {
   }
   return null;
 }
+var SiblingPluginMissingError = class extends Error {
+  constructor(providerId, searchedPaths) {
+    super(
+      `Could not locate the ${providerId} companion script. The sibling Claude plugin "${providerId}" does not appear to be installed. Install it via /plugin install ${providerId}@ai-plugins-cc, or run /ai:setup from a workspace clone.`
+    );
+    this.name = "SiblingPluginMissingError";
+    this.providerId = providerId;
+    this.searchedPaths = searchedPaths;
+  }
+};
 function resolveSiblingCompanionPath(providerId) {
   const root = pluginRoot();
   const filename = `${providerId}-companion.mjs`;
@@ -352,12 +368,10 @@ function resolveSiblingCompanionPath(providerId) {
   const marketplaceVersioned = listVersionsDescending(marketplaceParent).map(
     (version) => path3.join(marketplaceParent, version, relative)
   );
-  const marketplaceFlat = path3.resolve(root, "..", providerId, relative);
-  const found = firstExisting([devSibling, marketplaceFlat, ...marketplaceVersioned]);
+  const candidates = [devSibling, ...marketplaceVersioned];
+  const found = firstExisting(candidates);
   if (!found) {
-    throw new Error(
-      `Could not locate the ${providerId} companion script (looked next to the umbrella plugin at ${devSibling} and under ${marketplaceParent}). Install the @ai-plugins-cc/${providerId} plugin via the marketplace, or run /ai:setup from a workspace clone.`
-    );
+    throw new SiblingPluginMissingError(providerId, candidates);
   }
   return found;
 }
@@ -407,11 +421,68 @@ function isProvider(id) {
 
 // plugins/ai/scripts/lib/dispatch.mjs
 var DEFAULT_TIMEOUT_MS2 = 10 * 60 * 1e3;
+var DEFAULT_STDOUT_CAP2 = 50 * 1024 * 1024;
+var DEFAULT_STDERR_CAP = 10 * 1024 * 1024;
+function killProcessTree(child, signal = "SIGKILL") {
+  if (!child || typeof child.pid !== "number") return;
+  try {
+    process6.kill(-child.pid, signal);
+    return;
+  } catch {
+  }
+  try {
+    child.kill(signal);
+  } catch {
+  }
+}
+var VALUE_OPTION_LONG_KEYS = /* @__PURE__ */ new Set([
+  "base",
+  "scope",
+  "model",
+  "cwd",
+  "prompt-file",
+  "dirs",
+  "files",
+  "max-files",
+  "max-file-bytes",
+  "timeout-ms",
+  "poll-interval-ms",
+  "job-id"
+]);
+var SHORT_OPTION_ALIASES = /* @__PURE__ */ new Map([
+  ["m", "model"],
+  ["C", "cwd"]
+]);
+function hasPositionalFocusText(args) {
+  for (let i = 0; i < args.length; i += 1) {
+    const token = args[i];
+    if (typeof token !== "string") continue;
+    if (token === "--") {
+      return i + 1 < args.length;
+    }
+    if (token.startsWith("--")) {
+      const [key, inlineValue] = token.slice(2).split("=", 2);
+      if (inlineValue === void 0 && VALUE_OPTION_LONG_KEYS.has(key)) {
+        i += 1;
+      }
+      continue;
+    }
+    if (token.startsWith("-") && token !== "-") {
+      const shortKey = token.slice(1);
+      const longKey = SHORT_OPTION_ALIASES.get(shortKey) ?? shortKey;
+      if (VALUE_OPTION_LONG_KEYS.has(longKey)) {
+        i += 1;
+      }
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
 function mapUmbrellaCommandToProviderArgs(command, passthrough = []) {
   const args = Array.isArray(passthrough) ? [...passthrough] : [];
-  const hasFocusText = args.some((a) => typeof a === "string" && !a.startsWith("--"));
   if (command === "review") {
-    return [hasFocusText ? "adversarial-review" : "review", ...args];
+    return [hasPositionalFocusText(args) ? "adversarial-review" : "review", ...args];
   }
   if (command === "rescue") return ["task", ...args];
   if (command === "gater") return ["adversarial-review", ...args];
@@ -420,6 +491,19 @@ function mapUmbrellaCommandToProviderArgs(command, passthrough = []) {
 function defaultEnvForProvider(providerId) {
   if (providerId === "gemini") return { GEMINI_CLI_TRUST_WORKSPACE: "true" };
   return {};
+}
+function makeStderrLineStreamer(prefix, dest = process6.stderr) {
+  let buf = "";
+  return (chunk) => {
+    buf += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl);
+      buf = buf.slice(nl + 1);
+      if (line.length > 0) dest.write(`${prefix}${line}
+`);
+    }
+  };
 }
 async function dispatchToProvider(providerId, providerArgs, options = {}) {
   const provider = getProvider(providerId);
@@ -431,7 +515,8 @@ async function dispatchToProvider(providerId, providerArgs, options = {}) {
       env: mergedEnv,
       timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS2,
       stdoutCapBytes: options.stdoutCapBytes,
-      stdin: options.stdin
+      stdin: options.stdin,
+      onStderr: options.onStderrChunk
     });
     return {
       providerId,
@@ -452,12 +537,18 @@ async function dispatchToProvider(providerId, providerArgs, options = {}) {
 }
 function spawnInHouseCompanion(provider, providerArgs, options = {}) {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS2;
+  const stdoutCap = options.stdoutCapBytes ?? DEFAULT_STDOUT_CAP2;
+  const stderrCap = options.stderrCapBytes ?? DEFAULT_STDERR_CAP;
   const args = Array.isArray(providerArgs) ? providerArgs : [];
   const env = { ...process6.env, ...options.env ?? {} };
   return new Promise((resolve) => {
     const child = spawn3(process6.execPath, [provider.companionPath, ...args], {
       cwd: options.cwd ?? process6.cwd(),
       env,
+      // `detached: true` makes the child a process group leader so we can
+      // kill the whole tree on timeout/cap-overrun. stdio stays piped to
+      // the parent so capture still works.
+      detached: true,
       stdio: [options.stdin == null ? "ignore" : "pipe", "pipe", "pipe"]
     });
     if (options.stdin != null) {
@@ -465,27 +556,40 @@ function spawnInHouseCompanion(provider, providerArgs, options = {}) {
     }
     let stdout = "";
     let stderr = "";
+    let stdoutOverrun = false;
+    let stderrOverrun = false;
+    const onStderrChunk = typeof options.onStderrChunk === "function" ? options.onStderrChunk : null;
     child.stdout.on("data", (chunk) => {
+      if (stdoutOverrun) return;
       stdout += chunk.toString("utf8");
+      if (stdout.length > stdoutCap) {
+        stdoutOverrun = true;
+        killProcessTree(child);
+      }
     });
     child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8");
+      if (!stderrOverrun) {
+        stderr += chunk.toString("utf8");
+        if (stderr.length > stderrCap) {
+          stderrOverrun = true;
+          killProcessTree(child);
+        }
+      }
+      if (onStderrChunk) onStderrChunk(chunk);
     });
     let timedOut = false;
     let timer = null;
     if (timeoutMs > 0) {
       timer = setTimeout(() => {
         timedOut = true;
-        try {
-          child.kill("SIGKILL");
-        } catch (_) {
-        }
+        killProcessTree(child);
       }, timeoutMs);
     }
     child.on("close", (code, signal) => {
       if (timer) clearTimeout(timer);
       let status;
       if (timedOut) status = 124;
+      else if (stdoutOverrun || stderrOverrun) status = 137;
       else if (code === 0) status = 0;
       else status = code ?? 1;
       resolve({
@@ -496,7 +600,7 @@ function spawnInHouseCompanion(provider, providerArgs, options = {}) {
         signal: signal ?? null,
         error: null,
         timedOut,
-        stdoutOverrun: false
+        stdoutOverrun
       });
     });
     child.on("error", (err) => {
@@ -509,14 +613,18 @@ function spawnInHouseCompanion(provider, providerArgs, options = {}) {
         signal: null,
         error: String(err),
         timedOut,
-        stdoutOverrun: false
+        stdoutOverrun
       });
     });
   });
 }
 async function dispatchCompare(providerIds, providerArgs, options = {}) {
+  const onStderrChunkFor = typeof options.onStderrChunkFor === "function" ? options.onStderrChunkFor : null;
   const settled = await Promise.allSettled(
-    providerIds.map((id) => dispatchToProvider(id, providerArgs, options))
+    providerIds.map((id) => {
+      const perProviderOptions = onStderrChunkFor ? { ...options, onStderrChunk: onStderrChunkFor(id) } : options;
+      return dispatchToProvider(id, providerArgs, perProviderOptions);
+    })
   );
   return settled.map((entry, index) => {
     if (entry.status === "fulfilled") return entry.value;
@@ -577,10 +685,20 @@ function resolveCompareProviders(options = {}) {
   const home = options.home ?? os3.homedir();
   const fromCli = parseList(options.cliProviders);
   if (fromCli && fromCli.length > 0) return validateList(fromCli, "cli-flag");
-  const fromWorkspace = readListFromConfig(path4.join(cwd, WORKSPACE_CONFIG_PATH));
-  if (fromWorkspace && fromWorkspace.length > 0) return validateList(fromWorkspace, "workspace-config");
-  const fromUser = readListFromConfig(path4.join(home, USER_CONFIG_PATH));
-  if (fromUser && fromUser.length > 0) return validateList(fromUser, "user-config");
+  const workspacePath = path4.join(cwd, WORKSPACE_CONFIG_PATH);
+  const userPath = path4.join(home, USER_CONFIG_PATH);
+  const fromWorkspaceCompare = readListFromConfig(workspacePath, "compareProviders");
+  if (fromWorkspaceCompare && fromWorkspaceCompare.length > 0)
+    return validateList(fromWorkspaceCompare, "workspace-compare");
+  const fromUserCompare = readListFromConfig(userPath, "compareProviders");
+  if (fromUserCompare && fromUserCompare.length > 0)
+    return validateList(fromUserCompare, "user-compare");
+  const fromWorkspaceEnabled = readListFromConfig(workspacePath, "enabledProviders");
+  if (fromWorkspaceEnabled && fromWorkspaceEnabled.length > 0)
+    return validateList(fromWorkspaceEnabled, "workspace-enabled");
+  const fromUserEnabled = readListFromConfig(userPath, "enabledProviders");
+  if (fromUserEnabled && fromUserEnabled.length > 0)
+    return validateList(fromUserEnabled, "user-enabled");
   return { providerIds: listProviders(), source: "default-all" };
 }
 function parseList(value) {
@@ -588,10 +706,10 @@ function parseList(value) {
   if (Array.isArray(value)) return value;
   return String(value).split(",").map((s) => s.trim()).filter(Boolean);
 }
-function readListFromConfig(filePath) {
+function readListFromConfig(filePath, key) {
   try {
     const parsed = JSON.parse(fs4.readFileSync(filePath, "utf8"));
-    if (Array.isArray(parsed?.compareProviders)) return parsed.compareProviders;
+    if (Array.isArray(parsed?.[key])) return parsed[key];
     return null;
   } catch {
     return null;
@@ -685,15 +803,31 @@ async function probeAllProviders(options = {}) {
   return out;
 }
 async function probeInHouseProvider(providerId, options) {
-  const result = await dispatchToProvider(
-    providerId,
-    ["setup", "--json"],
-    {
-      cwd: options.cwd ?? process7.cwd(),
-      env: options.env,
-      timeoutMs: options.timeoutMs ?? PROBE_TIMEOUT_MS
+  let result;
+  try {
+    result = await dispatchToProvider(
+      providerId,
+      ["setup", "--json"],
+      {
+        cwd: options.cwd ?? process7.cwd(),
+        env: options.env,
+        timeoutMs: options.timeoutMs ?? PROBE_TIMEOUT_MS
+      }
+    );
+  } catch (err) {
+    if (err instanceof SiblingPluginMissingError) {
+      return {
+        providerId,
+        ready: false,
+        available: false,
+        loggedIn: false,
+        pluginInstalled: false,
+        detail: `Sibling plugin "${providerId}" is not installed. Run /plugin install ${providerId}@ai-plugins-cc to fix.`,
+        raw: null
+      };
     }
-  );
+    throw err;
+  }
   if (result.status !== 0) {
     return {
       providerId,
@@ -819,8 +953,88 @@ import os4 from "node:os";
 import path5 from "node:path";
 var USER_CONFIG_DIR = path5.join(".claude");
 var USER_CONFIG_FILE = "ai-plugins-cc.json";
+var LOCK_TIMEOUT_MS = 1e4;
+var LOCK_RETRY_DELAY_MS = 50;
+var LOCK_STALE_MS = 3e4;
 function defaultUserConfigPath(home = os4.homedir()) {
   return path5.join(home, USER_CONFIG_DIR, USER_CONFIG_FILE);
+}
+function lockFilePath(filePath) {
+  return `${filePath}.lock`;
+}
+function tryAcquireLock(lockFile) {
+  let fd;
+  try {
+    fd = fs5.openSync(lockFile, "wx");
+  } catch (err) {
+    if (err.code === "EEXIST") return false;
+    throw err;
+  }
+  try {
+    fs5.writeSync(fd, JSON.stringify({ pid: process.pid, acquiredAt: Date.now() }));
+  } finally {
+    fs5.closeSync(fd);
+  }
+  return true;
+}
+function isStaleLock(lockFile) {
+  let stat;
+  try {
+    stat = fs5.statSync(lockFile);
+  } catch {
+    return true;
+  }
+  if (Date.now() - stat.mtimeMs < LOCK_STALE_MS) return false;
+  let meta;
+  try {
+    meta = JSON.parse(fs5.readFileSync(lockFile, "utf8"));
+  } catch {
+    return true;
+  }
+  if (typeof meta?.pid !== "number") return true;
+  if (meta.pid === process.pid) return false;
+  try {
+    process.kill(meta.pid, 0);
+    return false;
+  } catch (err) {
+    return err.code === "ESRCH";
+  }
+}
+function syncSleep(ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+  }
+}
+function acquireLock(filePath) {
+  fs5.mkdirSync(path5.dirname(filePath), { recursive: true });
+  const lockFile = lockFilePath(filePath);
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (tryAcquireLock(lockFile)) return lockFile;
+    if (isStaleLock(lockFile)) {
+      try {
+        fs5.unlinkSync(lockFile);
+      } catch {
+      }
+      continue;
+    }
+    syncSleep(LOCK_RETRY_DELAY_MS);
+  }
+  throw new Error(`Timed out acquiring settings lock at ${lockFile}`);
+}
+function releaseLock(lockFile) {
+  try {
+    fs5.unlinkSync(lockFile);
+  } catch {
+  }
+}
+function withLock(filePath, fn) {
+  const lockFile = acquireLock(filePath);
+  try {
+    return fn();
+  } finally {
+    releaseLock(lockFile);
+  }
 }
 function readSettings(home = os4.homedir()) {
   const filePath = defaultUserConfigPath(home);
@@ -832,8 +1046,7 @@ function readSettings(home = os4.homedir()) {
     return defaultSettings();
   }
 }
-function writeSettings(settings, home = os4.homedir()) {
-  const filePath = defaultUserConfigPath(home);
+function writeSettingsUnlocked(filePath, settings) {
   fs5.mkdirSync(path5.dirname(filePath), { recursive: true });
   const normalized = normalizeSettings(settings);
   const suffix = `${process.pid}.${randomBytes2(4).toString("hex")}`;
@@ -843,47 +1056,65 @@ function writeSettings(settings, home = os4.homedir()) {
   fs5.renameSync(tmp, filePath);
   return { filePath, settings: normalized };
 }
+function readSettingsUnlocked(filePath) {
+  if (!fs5.existsSync(filePath)) return defaultSettings();
+  try {
+    const parsed = JSON.parse(fs5.readFileSync(filePath, "utf8"));
+    return normalizeSettings(parsed);
+  } catch {
+    return defaultSettings();
+  }
+}
+function mutateSettings(home, mutator) {
+  const filePath = defaultUserConfigPath(home);
+  return withLock(filePath, () => {
+    const current = readSettingsUnlocked(filePath);
+    const next = mutator(current);
+    return writeSettingsUnlocked(filePath, next);
+  });
+}
 function enableProvider(id, home = os4.homedir()) {
   assertKnownProvider(id);
-  const current = readSettings(home);
-  const enabled = new Set(current.enabledProviders);
-  enabled.add(id);
-  const next = { ...current, enabledProviders: orderedList(enabled) };
-  return writeSettings(next, home);
+  return mutateSettings(home, (current) => {
+    const enabled = new Set(current.enabledProviders);
+    enabled.add(id);
+    return { ...current, enabledProviders: orderedList(enabled) };
+  });
 }
 function disableProvider(id, home = os4.homedir()) {
   assertKnownProvider(id);
-  const current = readSettings(home);
-  const enabled = new Set(current.enabledProviders);
-  enabled.delete(id);
-  const compare = current.compareProviders.filter((p) => p !== id);
-  let provider = current.provider;
-  if (provider === id) provider = orderedList(enabled)[0] ?? null;
-  const next = {
-    ...current,
-    provider,
-    enabledProviders: orderedList(enabled),
-    compareProviders: compare
-  };
-  return writeSettings(next, home);
+  return mutateSettings(home, (current) => {
+    const enabled = new Set(current.enabledProviders);
+    enabled.delete(id);
+    const compare = current.compareProviders.filter((p) => p !== id);
+    let provider = current.provider;
+    if (provider === id) provider = orderedList(enabled)[0] ?? null;
+    return {
+      ...current,
+      provider,
+      enabledProviders: orderedList(enabled),
+      compareProviders: compare
+    };
+  });
 }
 function setDefaultProvider(id, home = os4.homedir()) {
   assertKnownProvider(id);
-  const current = readSettings(home);
-  const enabled = new Set(current.enabledProviders);
-  enabled.add(id);
-  const next = {
-    ...current,
-    provider: id,
-    enabledProviders: orderedList(enabled)
-  };
-  return writeSettings(next, home);
+  return mutateSettings(home, (current) => {
+    const enabled = new Set(current.enabledProviders);
+    enabled.add(id);
+    return {
+      ...current,
+      provider: id,
+      enabledProviders: orderedList(enabled)
+    };
+  });
 }
 function setCompareProviders(ids, home = os4.homedir()) {
   for (const id of ids) assertKnownProvider(id);
-  const current = readSettings(home);
-  const next = { ...current, compareProviders: [...ids] };
-  return writeSettings(next, home);
+  return mutateSettings(home, (current) => ({
+    ...current,
+    compareProviders: [...ids]
+  }));
 }
 function defaultSettings() {
   return {
@@ -924,6 +1155,7 @@ var COMMANDS = /* @__PURE__ */ new Set([
   "gater",
   "compare",
   "codex-update",
+  "grok-patch",
   "setup",
   "verify",
   "settings"
@@ -938,6 +1170,7 @@ function usage(stream = process8.stderr) {
       "  verify --provider=ID [--json]           probe one provider",
       "  settings show|enable|disable|...        manage ~/.claude/ai-plugins-cc.json",
       "  codex-update [--tag=vX.Y.Z] [--pin]      install pinned upstream codex",
+      "  grok-patch [--json]                     run @ai-plugins-cc/grok's patch-grok-cli.mjs",
       "Examples:",
       "  ai-companion.mjs review --provider=gemini --scope=diff",
       "  ai-companion.mjs compare --providers=gemini,codex --scope=diff",
@@ -1019,7 +1252,8 @@ async function runCompare(parsed) {
     process8.exit(2);
   }
   const args = mapUmbrellaCommandToProviderArgs(action, parsed.passthrough);
-  const results = await dispatchCompare(providerIds, args);
+  const compareOptions = parsed.json ? {} : { onStderrChunkFor: (id) => makeStderrLineStreamer(`[${id}] `, process8.stderr) };
+  const results = await dispatchCompare(providerIds, args, compareOptions);
   if (parsed.json) {
     process8.stdout.write(`${JSON.stringify({ providers: providerIds, results }, null, 2)}
 `);
@@ -1028,6 +1262,38 @@ async function runCompare(parsed) {
   }
   const anyOk = results.some((r) => r.status === 0);
   process8.exit(anyOk ? 0 : 1);
+}
+async function runGrokPatch(argv) {
+  let scriptPath;
+  try {
+    const companion = resolveSiblingCompanionPath("grok");
+    scriptPath = path6.join(path6.dirname(companion), "patch-grok-cli.mjs");
+  } catch (err) {
+    if (err instanceof SiblingPluginMissingError) {
+      process8.stderr.write(
+        `${err.message}
+(grok-patch needs the grok plugin's patch-grok-cli.mjs script.)
+`
+      );
+      process8.exit(2);
+    }
+    throw err;
+  }
+  const args = argv.slice(1);
+  const child = spawn4(process8.execPath, [scriptPath, ...args], {
+    stdio: "inherit"
+  });
+  await new Promise((resolve) => {
+    child.on("close", (code) => {
+      process8.exit(code ?? 1);
+    });
+    child.on("error", (err) => {
+      process8.stderr.write(`grok-patch: ${err.message}
+`);
+      resolve();
+      process8.exit(1);
+    });
+  });
 }
 async function runCodexUpdate(argv) {
   let tag = null;
@@ -1233,6 +1499,7 @@ Unknown command: ${command}
     process8.exit(2);
   }
   if (command === "codex-update") return runCodexUpdate(argv);
+  if (command === "grok-patch") return runGrokPatch(argv);
   if (command === "setup") return runSetup(argv);
   if (command === "verify") return runVerify(argv);
   if (command === "settings") return runSettings(argv);

@@ -9,7 +9,7 @@ import process from "node:process";
 import { discoverCodexInstall, invokeCodexCommand } from "@ai-plugins-cc/codex-adapter";
 
 import { dispatchToProvider } from "./dispatch.mjs";
-import { listProviders } from "./providers.mjs";
+import { listProviders, SiblingPluginMissingError } from "./providers.mjs";
 
 const PROBE_TIMEOUT_MS = 30_000;
 
@@ -56,15 +56,38 @@ export async function probeAllProviders(options = {}) {
 }
 
 async function probeInHouseProvider(providerId, options) {
-  const result = await dispatchToProvider(
-    providerId,
-    ["setup", "--json"],
-    {
-      cwd: options.cwd ?? process.cwd(),
-      env: options.env,
-      timeoutMs: options.timeoutMs ?? PROBE_TIMEOUT_MS
+  let result;
+  try {
+    result = await dispatchToProvider(
+      providerId,
+      ["setup", "--json"],
+      {
+        cwd: options.cwd ?? process.cwd(),
+        env: options.env,
+        timeoutMs: options.timeoutMs ?? PROBE_TIMEOUT_MS
+      }
+    );
+  } catch (err) {
+    // The umbrella resolves sibling companion paths lazily. If the user
+    // installed only the umbrella plugin (without the matching provider
+    // plugin), surface that distinctly from "the CLI binary is missing"
+    // — otherwise /ai:setup would helpfully run `npm install -g <cli>` and
+    // still leave the user with no working /ai:* dispatch.
+    if (err instanceof SiblingPluginMissingError) {
+      return {
+        providerId,
+        ready: false,
+        available: false,
+        loggedIn: false,
+        pluginInstalled: false,
+        detail:
+          `Sibling plugin "${providerId}" is not installed. ` +
+          `Run /plugin install ${providerId}@ai-plugins-cc to fix.`,
+        raw: null
+      };
     }
-  );
+    throw err;
+  }
   if (result.status !== 0) {
     return {
       providerId,
