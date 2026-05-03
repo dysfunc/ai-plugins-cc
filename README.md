@@ -27,25 +27,40 @@ Add the marketplace in Claude Code:
 /plugin marketplace add dysfunc/ai-plugins-cc
 ```
 
-Install the plugin you want (`ai` for the umbrella with cross-provider commands; `gemini` or `grok` for a single provider):
+Install the plugin(s) you want. Three shapes:
+
+**A. The umbrella (recommended for most users).** One install, all three providers under `/ai:*`:
 
 ```
-/plugin install ai@ai-plugins-cc      # or gemini, or grok
-```
-
-Reload plugins:
-
-```
+/plugin install ai@ai-plugins-cc
 /reload-plugins
-```
-
-Then run:
-
-```
 /ai:setup
 ```
 
-`/ai:setup` walks you through picking which providers to enable, installs each provider's CLI for you, captures auth, and persists your defaults. You can re-run it any time, or use `/ai:settings` to change individual providers later.
+`ai@ai-plugins-cc` ships bundled fallbacks for the gemini and grok runtimes — you don't need to install those plugins separately for `/ai:review`, `/ai:rescue`, etc. to work. `/ai:setup` is the wizard that picks providers, installs CLIs, walks auth, and persists your defaults.
+
+**B. A single provider, dedicated slash commands.** Install just the provider you want; you get its `/<provider>:*` surface (e.g. `/gemini:review`, `/grok:rescue`) without the umbrella:
+
+```
+/plugin install gemini@ai-plugins-cc      # /gemini:review, /gemini:rescue, /gemini:setup, ...
+/plugin install grok@ai-plugins-cc        # /grok:review, /grok:rescue, /grok:setup, ...
+/reload-plugins
+/gemini:setup                             # or /grok:setup
+```
+
+**C. Umbrella + per-provider plugins together.** Install both the umbrella *and* one or more per-provider plugins. You get `/ai:*` cross-provider routing **and** the per-provider commands. The umbrella prefers the installed sibling plugin's runtime over its bundled fallback when present, so updates to the per-provider plugin propagate immediately.
+
+```
+/plugin install ai@ai-plugins-cc
+/plugin install gemini@ai-plugins-cc
+/plugin install grok@ai-plugins-cc
+/reload-plugins
+/ai:setup
+```
+
+Codex is installed by the umbrella's `/ai:codex-update` command (see [Codex setup](#codex-setup) below) — there's no `codex@ai-plugins-cc` marketplace plugin because we don't vendor OpenAI's upstream.
+
+Re-run `/ai:setup` any time, or use `/ai:settings` to change individual providers later.
 
 ### From source (development)
 
