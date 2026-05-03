@@ -48,6 +48,15 @@ Install the plugin(s) you want. Three shapes:
 /gemini:setup                             # or /grok:setup
 ```
 
+For Codex, the canonical standalone path is OpenAI's own marketplace — we don't ship a wrapper because OpenAI maintains the upstream plugin directly:
+
+```
+/plugin marketplace add openai/codex-plugin-cc
+/plugin install codex@openai-codex
+/reload-plugins
+/codex:setup
+```
+
 **C. Umbrella + per-provider plugins together.** Install both the umbrella *and* one or more per-provider plugins. You get `/ai:*` cross-provider routing **and** the per-provider commands. The umbrella prefers the installed sibling plugin's runtime over its bundled fallback when present, so updates to the per-provider plugin propagate immediately.
 
 ```
@@ -58,7 +67,7 @@ Install the plugin(s) you want. Three shapes:
 /ai:setup
 ```
 
-Codex is installed by the umbrella's `/ai:codex-update` command (see [Codex setup](#codex-setup) below) — there's no `codex@ai-plugins-cc` marketplace plugin because we don't vendor OpenAI's upstream.
+Codex is installed by the umbrella's `/ai:codex-update` command (see [Codex setup](#codex-setup) below). There's no `codex@ai-plugins-cc` plugin in our marketplace because the canonical codex install lives at `openai/codex-plugin-cc` (see Path B above for the standalone flow).
 
 Re-run `/ai:setup` any time, or use `/ai:settings` to change individual providers later.
 
