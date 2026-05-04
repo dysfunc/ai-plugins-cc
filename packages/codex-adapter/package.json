@@ -1,6 +1,6 @@
 {
   "name": "@ai-plugins-cc/codex-adapter",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": false,
   "type": "module",
   "description": "Adapter that integrates with upstream openai/codex-plugin-cc: discovery, version pinning, subprocess invocation, output normalization.",

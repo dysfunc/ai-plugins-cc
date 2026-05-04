@@ -1,5 +1,11 @@
 # @ai-plugins-cc/codex-adapter
 
+## 0.2.1
+
+### Patch Changes
+
+- `installCodexUpstream` now returns `companionPath` and `pluginManifestPath` alongside `root`, matching the shape of `discoverCodexInstall`. This unbreaks the `installCodexUpstream → invokeCodexCommand` chain — passing an install result directly into `invokeCodexCommand` previously led to `spawn(node, [undefined, ...])` and a `Cannot find module '<cwd>/undefined'` failure. The canary, which exercises this exact chain, was the only path stressing the contract gap; unit tests now cover it explicitly.
+
 ## 0.2.0
 
 ### Minor Changes
