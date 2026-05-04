@@ -115,6 +115,14 @@ export async function installCodexUpstream(options = {}) {
 
   return {
     root: into,
+    // Match discoverCodexInstall's return shape so callers (e.g. the
+    // canary) can chain `installCodexUpstream` → `invokeCodexCommand`
+    // without having to re-discover. Without this field,
+    // invokeCodexCommand would `spawn(node, [undefined, ...])` and node
+    // would error trying to resolve a literal "undefined" as a module
+    // path.
+    companionPath: path.join(into, "plugins", "codex", "scripts", "codex-companion.mjs"),
+    pluginManifestPath: path.join(into, "plugins", "codex", ".claude-plugin", "plugin.json"),
     repo,
     tag,
     sha: observedSha,

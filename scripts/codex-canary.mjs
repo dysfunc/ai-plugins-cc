@@ -66,33 +66,27 @@ async function main() {
     fail("install-failed", `Install of ${config.repo}@${tag} failed: ${err?.message ?? err}`);
   }
 
-  // Try a no-network invocation: --version. We avoid `review --json` here
-  // because that needs a real repo and a real codex CLI on PATH; the goal of
-  // the canary is to detect contract drift, not to run a true review.
-  const versionResult = await invokeCodexCommand({
-    args: ["--version"],
-    install,
-    timeoutMs: 60_000
-  });
-  if (versionResult.status !== 0) {
-    fail(
-      "version-failed",
-      `Upstream companion ${install.tag} (${install.version ?? "unknown"}) exited ` +
-        `${versionResult.status} on --version. stderr=${truncate(versionResult.stderr, 4_000)}`
-    );
-  }
-
-  // Probe the schema: ask the companion to tell us about itself, expect
-  // exit 0. This catches missing-binary errors but not shape drift.
-  // Shape drift is exercised separately by tests against the real upstream
-  // when the codex CLI is available; here we just confirm the path resolves.
+  // Use `setup --json` as the canary's no-network probe. It's the
+  // contract that the umbrella relies on (probeCodex parses this exact
+  // output), it doesn't require the codex CLI on PATH or a real repo,
+  // and it exercises the install→spawn→stdout chain end-to-end. We
+  // intentionally do NOT call `--version` — upstream's companion
+  // script doesn't accept it as a subcommand, and using it as a smoke
+  // test would just be testing a subcommand that never existed.
   const setupResult = await invokeCodexCommand({
     args: ["setup", "--json"],
     install,
     timeoutMs: 60_000
   });
+  if (setupResult.status !== 0) {
+    fail(
+      "setup-failed",
+      `Upstream companion ${install.tag} (${install.version ?? "unknown"}) exited ` +
+        `${setupResult.status} on setup --json. stderr=${truncate(setupResult.stderr, 4_000)}`
+    );
+  }
 
-  // The setup result should at least be parseable JSON. If not, that's a
+  // The setup result must be parseable JSON. If not, that's a
   // contract-shape regression from upstream.
   if (setupResult.stdout.trim()) {
     try {
@@ -104,6 +98,12 @@ async function main() {
           `--- stdout (first 4 KB) ---\n${truncate(setupResult.stdout, 4_000)}`
       );
     }
+  } else {
+    fail(
+      "setup-empty",
+      `Upstream companion ${install.tag} produced empty stdout on setup --json. ` +
+        `Expected a JSON probe result.`
+    );
   }
 
   const summary = {

@@ -91,6 +91,33 @@ test("installCodexUpstream installs a tarball, exposes the resolved version, ato
   assert.equal(manifest.version, "9.9.9");
 });
 
+test("installCodexUpstream returns companionPath + pluginManifestPath, matching discoverCodexInstall", async () => {
+  const { tarball } = buildFakeUpstreamTarball({ tag: "v8.8.8", version: "8.8.8" });
+  const into = path.join(mkdtemp("install-companion-shape-"), "codex-plugin-cc");
+
+  const result = await installCodexUpstream({
+    tag: "v8.8.8",
+    into,
+    fetchImpl: fakeFetchReturning(tarball),
+    adapterPackageJson: writeUnpinnedAdapterPkg(),
+    allowUnpinned: true
+  });
+
+  assert.equal(typeof result.companionPath, "string", "companionPath must be a string");
+  assert.equal(typeof result.pluginManifestPath, "string", "pluginManifestPath must be a string");
+  assert.equal(
+    fs.existsSync(result.companionPath),
+    true,
+    `companionPath must point at an existing file: ${result.companionPath}`
+  );
+  assert.equal(
+    fs.existsSync(result.pluginManifestPath),
+    true,
+    `pluginManifestPath must point at an existing file: ${result.pluginManifestPath}`
+  );
+  assert.match(result.companionPath, /codex-companion\.mjs$/);
+});
+
 test("installCodexUpstream replaces an existing install on subsequent runs", async () => {
   const into = path.join(mkdtemp("install-replace-"), "codex-plugin-cc");
   const adapterPkg = writeUnpinnedAdapterPkg();
